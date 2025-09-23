@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import type { ProjectState, CodeComment, Repository, WindowWithFileSystemAPI, CommentCategory } from '../types';
+import type { ProjectState, CodeComment, Repository, WindowWithFileSystemAPI, CommentCategory, CommentTemplate } from '../types';
 import { readFile } from '../utils/fileUtils';
 import { 
   saveRepository, 
@@ -17,7 +17,9 @@ import {
   isNewRepositoryFlag,
   clearNewRepositoryFlag,
   saveCategories,
-  loadCategories
+  loadCategories,
+  saveTemplates,
+  loadTemplates
 } from '../utils/localStorage';
 
 export const useProjectState = () => {
@@ -40,6 +42,11 @@ export const useProjectState = () => {
   // Категории комментариев (не очищаются при сбросе репозитория)
   const [categories, setCategories] = useState<CommentCategory[]>(() => loadCategories());
 
+  // Шаблоны комментариев (не очищаются при сбросе репозитория)
+  const [templates, setTemplates] = useState<CommentTemplate[]>(() => {
+    return loadTemplates();
+  });
+
   // Автоматическое сохранение в localStorage при изменении состояния
   useEffect(() => {
     saveRepository(state.repository);
@@ -61,6 +68,11 @@ export const useProjectState = () => {
   useEffect(() => {
     saveCategories(categories);
   }, [categories]);
+
+  // Сохраняем шаблоны отдельно
+  useEffect(() => {
+    saveTemplates(templates);
+  }, [templates]);
 
   // Проверка при загрузке страницы - есть ли данные для восстановления
   useEffect(() => {
@@ -100,13 +112,36 @@ export const useProjectState = () => {
       '.html', '.htm', '.css', '.scss', '.sass', '.less', '.json', '.xml', '.yaml', '.yml', 
       '.md', '.txt', '.sql', '.sh', '.bash', '.ps1', '.vue', '.svelte', '.dart', '.kt', '.swift',
       '.dockerfile', '.env', '.gitignore', '.gitattributes', '.editorconfig', '.prettierrc', 
-      '.eslintrc', '.babelrc', '.config', '.conf', '.ini', '.toml', '.lock', '.log'
+      '.eslintrc', '.babelrc', '.config', '.conf', '.ini', '.toml', '.lock', '.log', '.po', '.pot'
     ];
     
-    // Проверяем расширение или файлы без расширения (могут быть конфигурационными)
-    return textExtensions.some(ext => fileName.toLowerCase().endsWith(ext)) || 
-           !fileName.includes('.') ||
-           ['README', 'LICENSE', 'CHANGELOG', 'Dockerfile', 'Makefile'].includes(fileName);
+    const configFiles = [
+      'README', 'LICENSE', 'CHANGELOG', 'Dockerfile', 'Makefile', '.flake8', '.pep8', '.pycodestyle',
+      '.isort.cfg', 'setup.cfg', 'pyproject.toml', 'requirements.txt', 'Pipfile', 'poetry.lock',
+      'tox.ini', 'pytest.ini', '.pre-commit-config.yaml', '.github', '.gitlab-ci.yml'
+    ];
+    
+    // Проверяем расширение
+    if (textExtensions.some(ext => fileName.toLowerCase().endsWith(ext))) {
+      return true;
+    }
+    
+    // Проверяем известные конфигурационные файлы
+    if (configFiles.some(config => fileName === config || fileName.startsWith(config))) {
+      return true;
+    }
+    
+    // Файлы без расширения обычно текстовые (конфигурационные)
+    if (!fileName.includes('.')) {
+      return true;
+    }
+    
+    // Django locale files (*.po, *.pot в папках locale)
+    if (filePath.includes('/locale/') && (fileName.endsWith('.po') || fileName.endsWith('.pot'))) {
+      return true;
+    }
+    
+    return false;
   }, []);
 
   // Функция для загрузки всех файлов из FileSystemDirectoryHandle
@@ -423,6 +458,55 @@ export const useProjectState = () => {
     }));
   }, []);
 
+  // === ФУНКЦИИ ДЛЯ РАБОТЫ С ШАБЛОНАМИ ===
+
+  const addTemplate = useCallback((templateData: Omit<CommentTemplate, 'id' | 'createdAt' | 'useCount'>) => {
+    const newTemplate: CommentTemplate = {
+      ...templateData,
+      id: `template-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      createdAt: new Date(),
+      useCount: 0
+    };
+    setTemplates(prev => [...prev, newTemplate]);
+    return newTemplate.id;
+  }, []);
+
+  const updateTemplate = useCallback((templateId: string, updates: Partial<Omit<CommentTemplate, 'id' | 'createdAt'>>) => {
+    setTemplates(prev => prev.map(t => t.id === templateId ? { ...t, ...updates } : t));
+  }, []);
+
+  const removeTemplate = useCallback((templateId: string) => {
+    setTemplates(prev => prev.filter(t => t.id !== templateId));
+  }, []);
+
+  const useTemplate = useCallback((templateId: string) => {
+    setTemplates(prev => prev.map(t => 
+      t.id === templateId 
+        ? { ...t, useCount: t.useCount + 1, lastUsed: new Date() }
+        : t
+    ));
+    
+    const template = templates.find(t => t.id === templateId);
+    return template?.content || '';
+  }, [templates]);
+
+  const duplicateTemplate = useCallback((templateId: string) => {
+    const template = templates.find(t => t.id === templateId);
+    if (!template) return;
+    
+    const duplicated: CommentTemplate = {
+      ...template,
+      id: `template-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      name: `${template.name} (копия)`,
+      createdAt: new Date(),
+      useCount: 0,
+      lastUsed: undefined
+    };
+    
+    setTemplates(prev => [...prev, duplicated]);
+    return duplicated.id;
+  }, [templates]);
+
   // Устанавливаем глобальную функцию для fallback обработки
   React.useEffect(() => {
     (window as WindowWithFileSystemAPI).handleDirectoryFallback = handleDirectoryFallback;
@@ -439,6 +523,7 @@ export const useProjectState = () => {
     pendingUrl, // Добавляем pendingUrl для использования в компонентах
     shouldPromptRestore,
     categories,
+    templates,
     
     // Действия
     selectRepository,
@@ -453,5 +538,10 @@ export const useProjectState = () => {
     addCategory,
     updateCategory,
     removeCategory,
+    addTemplate,
+    updateTemplate,
+    removeTemplate,
+    useTemplate,
+    duplicateTemplate,
   };
 };

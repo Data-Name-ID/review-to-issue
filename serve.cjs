@@ -3,7 +3,6 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const url = require('url');
 
 const port = 8080;
 const distPath = path.join(__dirname, 'dist');
@@ -21,7 +20,7 @@ const mimeTypes = {
 };
 
 const server = http.createServer((req, res) => {
-  let filePath = url.parse(req.url).pathname;
+  let filePath = new URL(req.url, `http://${req.headers.host}`).pathname;
   
   // Корневой путь -> index.html
   if (filePath === '/') {

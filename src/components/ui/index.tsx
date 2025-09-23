@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { forwardRef } from 'react';
 
 // === TYPES ===
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -18,6 +18,12 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   error?: string;
 }
 
+interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
+  label?: string;
+  error?: string;
+  children: React.ReactNode;
+}
+
 interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
   label?: string;
   error?: string;
@@ -27,6 +33,7 @@ interface BadgeProps {
   children: React.ReactNode;
   variant?: 'success' | 'warning' | 'danger' | 'info' | 'secondary';
   size?: 'sm' | 'md';
+  style?: React.CSSProperties;
 }
 
 interface SectionProps {
@@ -210,9 +217,9 @@ export const Input: React.FC<InputProps> = ({ label, error, className = '', styl
   );
 };
 
-// === TEXTAREA COMPONENT ===
-export const Textarea: React.FC<TextareaProps> = ({ label, error, className = '', style = {}, ...props }) => {
-  const textareaStyle = {
+// === SELECT COMPONENT ===
+export const Select: React.FC<SelectProps> = ({ label, error, className = '', style = {}, children, ...props }) => {
+  const selectStyle = {
     width: '100%',
     padding: '8px 12px',
     border: `1px solid ${error ? 'var(--gitlab-red)' : 'var(--gitlab-border-light)'}`,
@@ -221,8 +228,6 @@ export const Textarea: React.FC<TextareaProps> = ({ label, error, className = ''
     backgroundColor: 'var(--gitlab-bg-secondary)',
     color: 'var(--gitlab-text-primary)',
     boxSizing: 'border-box' as const,
-    resize: 'vertical' as const,
-    minHeight: '80px',
     ...style
   };
 
@@ -239,11 +244,13 @@ export const Textarea: React.FC<TextareaProps> = ({ label, error, className = ''
           {label}
         </label>
       )}
-      <textarea
-        className={`gitlab-textarea ${className}`}
-        style={textareaStyle}
+      <select
+        className={`gitlab-select ${className}`}
+        style={selectStyle}
         {...props}
-      />
+      >
+        {children}
+      </select>
       {error && (
         <div style={{
           fontSize: '12px',
@@ -257,8 +264,60 @@ export const Textarea: React.FC<TextareaProps> = ({ label, error, className = ''
   );
 };
 
+// === TEXTAREA COMPONENT ===
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
+  ({ label, error, className = '', style = {}, ...props }, ref) => {
+    const textareaStyle = {
+      width: '100%',
+      padding: '8px 12px',
+      border: `1px solid ${error ? 'var(--gitlab-red)' : 'var(--gitlab-border-light)'}`,
+      borderRadius: '4px',
+      fontSize: '13px',
+      backgroundColor: 'var(--gitlab-bg-secondary)',
+      color: 'var(--gitlab-text-primary)',
+      boxSizing: 'border-box' as const,
+      resize: 'vertical' as const,
+      minHeight: '80px',
+      ...style
+    };
+
+    return (
+      <div style={{ marginBottom: '0' }}>
+        {label && (
+          <label style={{
+            display: 'block',
+            marginBottom: '6px',
+            fontSize: '13px',
+            fontWeight: '500',
+            color: 'var(--gitlab-text-primary)'
+          }}>
+            {label}
+          </label>
+        )}
+        <textarea
+          ref={ref}
+          className={`gitlab-textarea ${className}`}
+          style={textareaStyle}
+          {...props}
+        />
+        {error && (
+          <div style={{
+            fontSize: '12px',
+            color: 'var(--gitlab-red)',
+            marginTop: '4px'
+          }}>
+            {error}
+          </div>
+        )}
+      </div>
+    );
+  }
+);
+
+Textarea.displayName = 'Textarea';
+
 // === BADGE COMPONENT ===
-export const Badge: React.FC<BadgeProps> = ({ children, variant = 'secondary', size = 'md' }) => {
+export const Badge: React.FC<BadgeProps> = ({ children, variant = 'secondary', size = 'md', style }) => {
   const getVariantStyles = () => {
     switch (variant) {
       case 'success':
@@ -318,7 +377,8 @@ export const Badge: React.FC<BadgeProps> = ({ children, variant = 'secondary', s
     ...getSizeStyles(),
     display: 'inline-block',
     fontWeight: '500',
-    lineHeight: '1'
+    lineHeight: '1',
+    ...style
   };
 
   return (

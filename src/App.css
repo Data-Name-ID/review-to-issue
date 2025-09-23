@@ -591,9 +591,7 @@ h1, h2, h3, h4, h5, h6 {
   border-bottom: 1px solid var(--gitlab-border-light);
   font-size: 12px;
   color: var(--gitlab-text-secondary);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  /* Убираем жесткие flex стили, чтобы позволить inline стилям работать */
 }
 
 .gitlab-comment-body {
@@ -615,6 +613,7 @@ h1, h2, h3, h4, h5, h6 {
   margin-top: 8px !important;
 }
 
+/* Стили для старых кнопок действий - теперь используются inline стили */
 .gitlab-comment-actions {
   display: flex;
   gap: 8px;

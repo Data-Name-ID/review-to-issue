@@ -1,6 +1,9 @@
-import { useState, memo, useEffect, useRef, useCallback } from 'react';
-import type { CodeComment, CommentCategory } from '../types';
+import { useState, memo, useEffect, useRef, useCallback, useMemo } from 'react';
+import type { CodeComment, CommentCategory, CommentTemplate } from '../types';
 import { HighlightedCode } from './HighlightedCode';
+import { MarkdownRenderer } from './MarkdownRenderer';
+import { MarkdownEditor } from './MarkdownEditor';
+import { TemplateSelector } from './TemplateSelector';
 import { Button, Textarea, FormActions, CategorySelector } from './ui';
 import { getContrastTextColor } from '../utils/categoryColors';
 
@@ -8,7 +11,9 @@ interface AllFilesViewerProps {
   files: Array<{ path: string; content: string }>;
   comments: CodeComment[];
   categories?: CommentCategory[];
+  templates?: CommentTemplate[];
   onAddCategory?: (name: string, color: string) => string;
+  onUseTemplate?: (templateId: string) => string;
   onAddComment: (comment: Omit<CodeComment, 'id' | 'timestamp'>) => void;
   onUpdateComment: (commentId: string, updates: Partial<CodeComment>) => void;
   onDeleteComment: (commentId: string) => void;
@@ -24,7 +29,9 @@ interface FileViewerProps {
   file: { path: string; content: string };
   comments: CodeComment[];
   categories: CommentCategory[];
+  templates: CommentTemplate[];
   onAddCategory?: (name: string, color: string) => string;
+  onTemplateRequest?: (editorId: string) => void;
   onAddComment: (comment: Omit<CodeComment, 'id' | 'timestamp'>) => void;
   onUpdateComment: (commentId: string, updates: Partial<CodeComment>) => void;
   onDeleteComment: (commentId: string) => void;
@@ -125,7 +132,7 @@ const FileStub = memo(({ file, comments, fileIndex, savedHeight }: FileStubProps
   );
 });
 
-const FileViewer = memo(({ file, comments, categories, onAddCategory, onAddComment, onUpdateComment, onDeleteComment, isHighlighted, fileIndex, currentFile }: FileViewerProps) => {
+const FileViewer = memo(({ file, comments, categories, templates, onAddCategory, onTemplateRequest, onAddComment, onUpdateComment, onDeleteComment, isHighlighted, fileIndex, currentFile }: FileViewerProps) => {
   const [selectedLines, setSelectedLines] = useState<{ start: number; end: number } | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
   const [editingComment, setEditingComment] = useState<string | null>(null);
@@ -134,6 +141,7 @@ const FileViewer = memo(({ file, comments, categories, onAddCategory, onAddComme
   const [showNewCommentForm, setShowNewCommentForm] = useState<number | null>(null);
   const [showFileCommentForm, setShowFileCommentForm] = useState(false);
   const [fileCommentText, setFileCommentText] = useState('');
+  const [isMarkdownPreview, setIsMarkdownPreview] = useState(false);
 
   // Категории теперь приходят как props
 
@@ -143,6 +151,9 @@ const FileViewer = memo(({ file, comments, categories, onAddCategory, onAddComme
   // Выбор категории при редактировании
   const [editCategoryId, setEditCategoryId] = useState<string | 'new' | ''>('');
 
+  // Выбор категории для файлового комментария
+  const [fileCategoryId, setFileCategoryId] = useState<string | 'new' | ''>('');
+
   // Оптимизация: ограничиваем большие файлы
   const lines = file.content.split('\n');
   const MAX_LINES = 1000; // Показываем максимум 1000 строк для производительности
@@ -150,6 +161,27 @@ const FileViewer = memo(({ file, comments, categories, onAddCategory, onAddComme
   const isFileTruncated = lines.length > MAX_LINES;
   
   const fileComments = comments.filter(c => c.filePath === file.path);
+
+  // Обработчик вставки шаблонов
+  useEffect(() => {
+    const handleInsertTemplate = (event: CustomEvent<{ editorId: string; content: string }>) => {
+      const { editorId, content } = event.detail;
+      
+      if (editorId === `file-comment-${file.path}`) {
+        setFileCommentText(content);
+      } else if (editorId.startsWith(`new-comment-${file.path}-`)) {
+        setNewCommentText(content);
+      } else if (editorId.startsWith(`edit-comment-`)) {
+        setEditText(content);
+      }
+    };
+
+    window.addEventListener('insertTemplate', handleInsertTemplate as EventListener);
+    
+    return () => {
+      window.removeEventListener('insertTemplate', handleInsertTemplate as EventListener);
+    };
+  }, [file.path]);
 
   const getFileIcon = (fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase()
@@ -163,6 +195,22 @@ const FileViewer = memo(({ file, comments, categories, onAddCategory, onAddComme
       case 'md': return '📝'
       default: return '📄'
     }
+  };
+
+  const isMarkdownFile = (fileName: string) => {
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    return ext === 'md' || ext === 'markdown' || fileName.toLowerCase().includes('readme');
+  };
+
+  const isReadmeFile = (filePath: string) => {
+    const fileName = filePath.split('/').pop()?.toLowerCase() || '';
+    const readmePatterns = [
+      /^readme\.md$/i,
+      /^readme\.markdown$/i,
+      /^readme\.txt$/i,
+      /^readme$/i
+    ];
+    return readmePatterns.some(pattern => pattern.test(fileName));
   };
 
   const handleMouseDown = (lineNumber: number) => {
@@ -275,12 +323,21 @@ const FileViewer = memo(({ file, comments, categories, onAddCategory, onAddComme
         startLine: 1,
         endLine: lines.length,
         comment: fileCommentText.trim(),
-        isFileComment: true
+        isFileComment: true,
+        categoryId: fileCategoryId && fileCategoryId !== 'new' ? fileCategoryId : undefined
       });
       setFileCommentText('');
+      setFileCategoryId('');
       setShowFileCommentForm(false);
     }
-  }, [fileCommentText, file.path, lines.length, onAddComment]);
+  }, [fileCommentText, fileCategoryId, file.path, lines.length, onAddComment]);
+
+  const handleFileCreateCategory = (name: string, color: string) => {
+    if (onAddCategory) {
+      const categoryId = onAddCategory(name, color);
+      setFileCategoryId(categoryId);
+    }
+  };
 
 
   return (
@@ -305,7 +362,38 @@ const FileViewer = memo(({ file, comments, categories, onAddCategory, onAddComme
       <div className="gitlab-code-header">
         <div className="d-flex align-center gap-2">
           <span>{getFileIcon(file.path)}</span>
-          <span>{file.path}</span>
+          <span style={{
+            ...(isReadmeFile(file.path) && {
+              fontWeight: '600',
+              color: 'var(--gitlab-blue)'
+            })
+          }}>
+            {file.path}
+            {isReadmeFile(file.path) && (
+              <span style={{
+                marginLeft: '8px',
+                padding: '2px 6px',
+                backgroundColor: 'var(--gitlab-blue)',
+                color: 'white',
+                borderRadius: '10px',
+                fontSize: '10px',
+                fontWeight: '600'
+              }}>
+                README
+              </span>
+            )}
+          </span>
+          {isMarkdownFile(file.path) && (
+            <Button
+              variant={isMarkdownPreview ? 'blue' : 'secondary'}
+              size="sm"
+              onClick={() => setIsMarkdownPreview(!isMarkdownPreview)}
+              title={isMarkdownPreview ? 'Показать исходный код' : 'Показать предпросмотр'}
+              style={{ marginLeft: '8px' }}
+            >
+              {isMarkdownPreview ? '📝' : '👁️'}
+            </Button>
+          )}
         </div>
         <div className="d-flex align-center gap-3 text-secondary" style={{ fontSize: '12px' }}>
           <span>
@@ -351,18 +439,28 @@ const FileViewer = memo(({ file, comments, categories, onAddCategory, onAddComme
             <span>Комментарий ко всему файлу</span>
           </div>
           <div className="gitlab-comment-body">
-          <Textarea
+          <MarkdownEditor
             value={fileCommentText}
-            onChange={(e) => setFileCommentText(e.target.value)}
+            onChange={setFileCommentText}
             placeholder="Введите комментарий ко всему файлу..."
             autoFocus
             rows={3}
             style={{ marginBottom: '6px' }}
+            showTemplateButton={templates && templates.length > 0}
+            onTemplateRequest={() => onTemplateRequest?.(`file-comment-${file.path}`)}
+          />
+          <CategorySelector
+            categories={categories}
+            selectedCategoryId={fileCategoryId}
+            onCategoryChange={setFileCategoryId}
+            onCreateCategory={handleFileCreateCategory}
+            placeholder="Категория (опционально)"
           />
             <FormActions
               onCancel={() => {
                 setShowFileCommentForm(false);
                 setFileCommentText('');
+                setFileCategoryId('');
               }}
               onSubmit={handleAddFileComment}
               submitText="➕"
@@ -439,7 +537,13 @@ const FileViewer = memo(({ file, comments, categories, onAddCategory, onAddComme
             </div>
           ) : (
             <div className="gitlab-comment-body">
-              {comment.comment}
+              <MarkdownRenderer 
+                content={comment.comment}
+                style={{
+                  fontSize: '14px',
+                  lineHeight: '1.5'
+                }}
+              />
             </div>
           )}
           </div>
@@ -447,11 +551,21 @@ const FileViewer = memo(({ file, comments, categories, onAddCategory, onAddComme
       })}
 
       {/* GitLab Code Block */}
-      <div style={{
-        backgroundColor: 'var(--gitlab-code-bg)',
-        maxWidth: '100%',
-        overflow: 'hidden'
-      }}>
+      {isMarkdownFile(file.path) && isMarkdownPreview ? (
+        <div style={{
+          backgroundColor: 'var(--gitlab-code-bg)',
+          padding: '16px',
+          maxWidth: '100%',
+          overflow: 'auto'
+        }}>
+          <MarkdownRenderer content={file.content} />
+        </div>
+      ) : (
+        <div style={{
+          backgroundColor: 'var(--gitlab-code-bg)',
+          maxWidth: '100%',
+          overflow: 'hidden'
+        }}>
         {displayLines.map((line, index) => {
           const lineNumber = index + 1;
           const lineComments = getLineComments(lineNumber);
@@ -529,13 +643,15 @@ const FileViewer = memo(({ file, comments, categories, onAddCategory, onAddComme
                     </div>
                   </div>
                   <div className="gitlab-comment-body">
-                    <Textarea
+                    <MarkdownEditor
                       value={newCommentText}
-                      onChange={(e) => setNewCommentText(e.target.value)}
+                      onChange={setNewCommentText}
                       placeholder="Введите ваш комментарий..."
                       autoFocus
                       rows={3}
-                      style={{ marginBottom: '0' }}
+                      style={{ marginBottom: '6px' }}
+                      showTemplateButton={templates && templates.length > 0}
+                      onTemplateRequest={() => onTemplateRequest?.(`new-comment-${file.path}-${lineNumber}`)}
                     />
                     <CategorySelector
                       categories={categories}
@@ -607,11 +723,13 @@ const FileViewer = memo(({ file, comments, categories, onAddCategory, onAddComme
                       
                       {editingComment === comment.id ? (
                         <div className="gitlab-comment-body">
-                          <Textarea
+                          <MarkdownEditor
                             value={editText}
-                            onChange={(e) => setEditText(e.target.value)}
+                            onChange={setEditText}
                             rows={3}
-                            style={{ marginBottom: '0' }}
+                            style={{ marginBottom: '6px' }}
+                            showTemplateButton={templates && templates.length > 0}
+                            onTemplateRequest={() => onTemplateRequest?.(`edit-comment-${comment.id}`)}
                           />
                           <CategorySelector
                             categories={categories}
@@ -630,7 +748,13 @@ const FileViewer = memo(({ file, comments, categories, onAddCategory, onAddComme
                         </div>
                         ) : (
                           <div className="gitlab-comment-body">
-                            {comment.comment}
+                            <MarkdownRenderer 
+                              content={comment.comment}
+                              style={{
+                                fontSize: '14px',
+                                lineHeight: '1.5'
+                              }}
+                            />
                           </div>
                         )}
                     </div>
@@ -656,16 +780,47 @@ const FileViewer = memo(({ file, comments, categories, onAddCategory, onAddComme
           </div>
         )}
       </div>
+      )}
 
     </div>
   );
 });
 
-export const AllFilesViewer = ({ files, comments, categories, onAddCategory, onAddComment, onUpdateComment, onDeleteComment, scrollToFile, onScrollComplete, currentFile, onCurrentFileChange, virtualizationEnabled, debugMode }: AllFilesViewerProps) => {
+export const AllFilesViewer = ({ files, comments, categories, templates, onAddCategory, onUseTemplate, onAddComment, onUpdateComment, onDeleteComment, scrollToFile, onScrollComplete, currentFile, onCurrentFileChange, virtualizationEnabled, debugMode }: AllFilesViewerProps) => {
+  // Сортируем файлы: README файлы в начале, затем остальные
+  const sortedFiles = useMemo(() => {
+    const isReadmeFile = (filePath: string) => {
+      const fileName = filePath.split('/').pop()?.toLowerCase() || '';
+      const readmePatterns = [
+        /^readme\.md$/i,
+        /^readme\.markdown$/i,
+        /^readme\.txt$/i,
+        /^readme$/i
+      ];
+      return readmePatterns.some(pattern => pattern.test(fileName));
+    };
+
+    return [...files].sort((a, b) => {
+      const aIsReadme = isReadmeFile(a.path);
+      const bIsReadme = isReadmeFile(b.path);
+      
+      // README файлы в начале
+      if (aIsReadme && !bIsReadme) return -1;
+      if (!aIsReadme && bIsReadme) return 1;
+      
+      // Остальные файлы по алфавиту
+      return a.path.localeCompare(b.path);
+    });
+  }, [files]);
+
   const [highlightedFile, setHighlightedFile] = useState<string | null>(null);
   const [visibleFileCount, setVisibleFileCount] = useState(20); // Начинаем с 20 файлов
   const [virtualizedFiles, setVirtualizedFiles] = useState<Set<number>>(new Set()); // Индексы файлов для показа заглушек
   const [pendingUnloadFiles, setPendingUnloadFiles] = useState<Set<number>>(new Set()); // Файлы ожидающие выгрузки
+  
+  // Состояние для селектора шаблонов
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [activeCommentEditor, setActiveCommentEditor] = useState<string | null>(null); // ID активного редактора
   const [fileHeights, setFileHeights] = useState<Map<number, number>>(new Map()); // Сохраненные высоты файлов
 
   // Функция для проверки видимости файла
@@ -717,6 +872,29 @@ export const AllFilesViewer = ({ files, comments, categories, onAddCategory, onA
   const loadMoreFiles = useCallback(() => {
     setVisibleFileCount(prev => Math.min(prev + 20, files.length));
   }, [files.length]);
+
+  // Функции для работы с шаблонами
+  const handleTemplateRequest = useCallback((editorId: string) => {
+    setActiveCommentEditor(editorId);
+    setShowTemplateSelector(true);
+  }, []);
+
+  const handleTemplateSelect = useCallback((content: string) => {
+    if (activeCommentEditor && onUseTemplate) {
+      // Используем глобальный хук для обновления содержимого активного редактора
+      const event = new CustomEvent('insertTemplate', {
+        detail: { editorId: activeCommentEditor, content }
+      });
+      window.dispatchEvent(event);
+    }
+    setShowTemplateSelector(false);
+    setActiveCommentEditor(null);
+  }, [activeCommentEditor, onUseTemplate]);
+
+  const handleTemplateSelectorClose = useCallback(() => {
+    setShowTemplateSelector(false);
+    setActiveCommentEditor(null);
+  }, []);
 
   // Функция сохранения высоты файла перед виртуализацией
   const saveFileHeight = useCallback((fileIndex: number) => {
@@ -910,7 +1088,7 @@ export const AllFilesViewer = ({ files, comments, categories, onAddCategory, onA
         };
         
         // Проверяем каждый файл
-        for (let i = 0; i < Math.min(visibleFileCount, files.length); i++) {
+        for (let i = 0; i < Math.min(visibleFileCount, sortedFiles.length); i++) {
           const element = document.querySelector(`[data-file-index="${i}"]`);
           if (element) {
             const rect = element.getBoundingClientRect();
@@ -1175,7 +1353,7 @@ export const AllFilesViewer = ({ files, comments, categories, onAddCategory, onA
           </div>
         )}
 
-        {files.slice(0, visibleFileCount).map((file, index) => {
+        {sortedFiles.slice(0, visibleFileCount).map((file, index) => {
           const isVirtualized = virtualizationEnabled && virtualizedFiles.has(index);
           
           return isVirtualized ? (
@@ -1192,7 +1370,9 @@ export const AllFilesViewer = ({ files, comments, categories, onAddCategory, onA
               file={file}
               comments={comments}
               categories={categories || []}
+              templates={templates || []}
               onAddCategory={onAddCategory}
+              onTemplateRequest={handleTemplateRequest}
               onAddComment={onAddComment}
               onUpdateComment={onUpdateComment}
               onDeleteComment={onDeleteComment}
@@ -1230,13 +1410,13 @@ export const AllFilesViewer = ({ files, comments, categories, onAddCategory, onA
               borderRadius: '50%',
               animation: 'spin 1s linear infinite'
             }}></div>
-            Загрузка файлов... ({visibleFileCount} из {files.length})
+            Загрузка файлов... ({visibleFileCount} из {sortedFiles.length})
           </div>
         </div>
       )}
       
       {/* Дополнительная кнопка для ручной загрузки */}
-      {visibleFileCount < files.length && (
+      {visibleFileCount < sortedFiles.length && (
         <div style={{
           padding: '10px 20px',
           textAlign: 'center'
@@ -1248,6 +1428,15 @@ export const AllFilesViewer = ({ files, comments, categories, onAddCategory, onA
             📂+
           </Button>
         </div>
+      )}
+
+      {/* Template Selector Modal */}
+      {showTemplateSelector && (
+        <TemplateSelector
+          templates={templates || []}
+          onSelectTemplate={handleTemplateSelect}
+          onClose={handleTemplateSelectorClose}
+        />
       )}
     </div>
   );

@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useProjectState } from './hooks/useProjectState'
-import type { CommentCategory } from './types'
 import { RepositorySelector } from './components/RepositorySelector'
 import { AllFilesViewer } from './components/AllFilesViewer'
 import { CommentsPanel } from './components/CommentsPanel'
 import { MarkdownExport } from './components/MarkdownExport'
 import { FileTree } from './components/FileTree'
 import { RestoreNotification } from './components/RestoreNotification'
+import { TemplatesManager } from './components/TemplatesManager'
 import { Button, Section, SettingItem, InfoCard } from './components/ui'
 import { 
   saveCurrentFile, 
@@ -20,8 +20,7 @@ import {
   saveVirtualizationEnabled, 
   loadVirtualizationEnabled,
   saveDebugMode, 
-  loadDebugMode,
-  clearAppStorage
+  loadDebugMode
 } from './utils/localStorage'
 import './App.css'
 
@@ -34,10 +33,34 @@ function App() {
     setCurrentFile(filePath)
     setScrollToFile(filePath)
   }, [])
+
+  // Функция для перехода к комментарию
+  const handleNavigateToComment = useCallback((filePath: string, lineNumber: number) => {
+    setCurrentFile(filePath)
+    setScrollToFile(filePath)
+    
+    // НЕ переключаемся на вкладку файлов - остаемся на текущей вкладке (комментарии)
+    // Но прокручиваем основную область просмотра к нужному файлу
+    
+    // Небольшая задержка для прокрутки к конкретной строке
+    setTimeout(() => {
+      const lineElement = document.querySelector(`[data-line-number="${lineNumber}"]`);
+      if (lineElement) {
+        lineElement.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'center' 
+        });
+      }
+    }, 500);
+  }, [])
   const [showSidebar, setShowSidebar] = useState(() => loadShowSidebar())
   const [isMobileView, setIsMobileView] = useState(false)
   const [showRepoSettings, setShowRepoSettings] = useState(false)
-  const [activePanel, setActivePanel] = useState<'files' | 'comments' | 'export'>(() => loadActivePanel())
+  const [activePanel, setActivePanel] = useState<'files' | 'comments' | 'export' | 'templates'>(() => {
+    const loaded = loadActivePanel() as 'files' | 'comments' | 'export' | 'templates' | 'readme';
+    // Если загружена старая вкладка 'readme', используем 'files'
+    return loaded === 'readme' ? 'files' : loaded;
+  })
   const [sidebarWidth, setSidebarWidth] = useState(() => loadSidebarWidth())
   const [isResizing, setIsResizing] = useState(false)
   // Настройки производительности
@@ -52,6 +75,7 @@ function App() {
     pendingUrl,
     shouldPromptRestore,
     categories,
+    templates,
     selectRepository,
     setRepositoryUrl,
     addComment,
@@ -61,7 +85,12 @@ function App() {
     restoreLastDirectory,
     dismissRestore,
     startNewRepository,
-    addCategory
+    addCategory,
+    addTemplate,
+    updateTemplate,
+    removeTemplate,
+    useTemplate,
+    duplicateTemplate
   } = useProjectState()
 
   // Проверка размера экрана
@@ -83,23 +112,6 @@ function App() {
     document.documentElement.style.setProperty('--gitlab-sidebar-width', `${sidebarWidth}px`)
   }, [sidebarWidth])
 
-  // Прокидываем категории в глобальную переменную для простого доступа из инлайновых форм
-  useEffect(() => {
-    ;(window as unknown as { __categories__?: CommentCategory[] }).__categories__ = categories
-  }, [categories])
-
-  // Слушатель создания категории из инлайна
-  useEffect(() => {
-    const handler = (e: CustomEvent<{ name: string; color: string }>) => {
-      const { name, color } = e.detail || {}
-      if (name && color) {
-        const id = addCategory(name, color)
-        ;(window as unknown as { __lastCreatedCategoryId?: string }).__lastCreatedCategoryId = id
-      }
-    }
-    window.addEventListener('createCategory', handler as EventListener)
-    return () => window.removeEventListener('createCategory', handler as EventListener)
-  }, [addCategory])
 
   // Автосохранение состояний в localStorage
   useEffect(() => {
@@ -377,13 +389,19 @@ function App() {
             >
               Комментарии {comments.length > 0 && `(${comments.length})`}
             </button>
+           <button
+               onClick={() => setActivePanel('export')}
+               className={`gitlab-panel-tab ${activePanel === 'export' ? 'active' : ''}`}
+             >
+               Экспорт
+            </button>
             <button
-              onClick={() => setActivePanel('export')}
-              className={`gitlab-panel-tab ${activePanel === 'export' ? 'active' : ''}`}
+              onClick={() => setActivePanel('templates')}
+              className={`gitlab-panel-tab ${activePanel === 'templates' ? 'active' : ''}`}
             >
-              Экспорт
-        </button>
-          </div>
+              Шаблоны {templates.length > 0 && `(${templates.length})`}
+            </button>
+           </div>
         </div>
 
         {/* Sidebar Content */}
@@ -406,6 +424,8 @@ function App() {
                 onUpdateComment={updateComment}
                 onRemoveComment={removeComment}
                 onClearComments={clearComments}
+                onAddCategory={addCategory}
+                onNavigateToComment={handleNavigateToComment}
               />
             </div>
           )}
@@ -417,6 +437,18 @@ function App() {
                 repository={repository}
                 allFiles={allFiles}
                 categories={categories}
+              />
+            </div>
+          )}
+
+          {activePanel === 'templates' && (
+            <div style={{ padding: '16px' }}>
+              <TemplatesManager
+                templates={templates}
+                onAddTemplate={addTemplate}
+                onUpdateTemplate={updateTemplate}
+                onRemoveTemplate={removeTemplate}
+                onDuplicateTemplate={duplicateTemplate}
               />
             </div>
           )}
@@ -443,21 +475,23 @@ function App() {
 
         {/* File Content */}
         <div className="p-4">
-          <AllFilesViewer
-            files={allFiles}
-            comments={comments}
-            categories={categories}
-            onAddCategory={addCategory}
-            onAddComment={addComment}
-            onUpdateComment={updateComment}
-            onDeleteComment={removeComment}
-            scrollToFile={scrollToFile}
-            onScrollComplete={() => setScrollToFile(null)}
-            currentFile={currentFile}
-            onCurrentFileChange={setCurrentFile}
-            virtualizationEnabled={virtualizationEnabled}
-            debugMode={debugMode}
-          />
+            <AllFilesViewer
+              files={allFiles}
+              comments={comments}
+              categories={categories}
+              templates={templates}
+              onAddCategory={addCategory}
+              onUseTemplate={useTemplate}
+              onAddComment={addComment}
+              onUpdateComment={updateComment}
+              onDeleteComment={removeComment}
+              scrollToFile={scrollToFile}
+              onScrollComplete={() => setScrollToFile(null)}
+              currentFile={currentFile}
+              onCurrentFileChange={setCurrentFile}
+              virtualizationEnabled={virtualizationEnabled}
+              debugMode={debugMode}
+            />
         </div>
         </div>
       </main>
@@ -559,42 +593,6 @@ function App() {
                 </Button>
               </SettingItem>
 
-              <SettingItem
-                title="Очистить данные"
-                description="Удалить все сохраненные настройки и комментарии"
-                icon="🗑️"
-              >
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    if (confirm('Вы уверены, что хотите удалить все сохраненные данные?')) {
-                      clearAppStorage();
-                      window.location.reload();
-                    }
-                  }}
-                >
-                  🗑️
-                </Button>
-              </SettingItem>
-
-              <SettingItem
-                title="Новый репозиторий"
-                description="Сбросить все данные и начать работу с новым репозиторием"
-                icon="🆕"
-              >
-                <Button
-                  variant="blue"
-                  size="sm"
-                  onClick={() => {
-                    if (confirm('Вы уверены, что хотите начать работу с новым репозиторием? Все текущие данные будут удалены.')) {
-                      startNewRepository();
-                    }
-                  }}
-                >
-                  🆕
-                </Button>
-              </SettingItem>
 
               {/* Performance Info */}
               <InfoCard type="info">

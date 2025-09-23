@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import type { CodeComment, Repository, CommentCategory } from '../types';
 import { generateMarkdownReport } from '../utils/markdownGenerator';
 import { Button } from './ui';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface MarkdownExportProps {
   comments: CodeComment[];
@@ -12,6 +13,8 @@ interface MarkdownExportProps {
 
 export const MarkdownExport = ({ comments, repository, allFiles, categories }: MarkdownExportProps) => {
   const [copied, setCopied] = useState(false);
+  const [previewMode, setPreviewMode] = useState<'raw' | 'rendered'>('rendered');
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
   // Целостный отчёт (оставлен для fallback предпросмотра без категорий)
   const markdownContent = useMemo(() => {
@@ -64,6 +67,24 @@ export const MarkdownExport = ({ comments, repository, allFiles, categories }: M
 
     return sections
   }, [comments, repository, allFiles, categories])
+
+  const toggleSection = (sectionKey: string) => {
+    const newExpanded = new Set(expandedSections);
+    if (newExpanded.has(sectionKey)) {
+      newExpanded.delete(sectionKey);
+    } else {
+      newExpanded.add(sectionKey);
+    }
+    setExpandedSections(newExpanded);
+  };
+
+  const expandAllSections = () => {
+    setExpandedSections(new Set(categoryPreviews.map(s => s.key)));
+  };
+
+  const collapseAllSections = () => {
+    setExpandedSections(new Set());
+  };
 
   const handleCopySection = async (content: string) => {
     try {
@@ -143,7 +164,7 @@ export const MarkdownExport = ({ comments, repository, allFiles, categories }: M
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: '15px'
+        marginBottom: '12px'
       }}>
         <h3 style={{
           margin: '0',
@@ -153,6 +174,66 @@ export const MarkdownExport = ({ comments, repository, allFiles, categories }: M
         }}>
           Экспорт ({comments.length})
         </h3>
+      </div>
+
+      {/* Панель управления */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        marginBottom: '12px',
+        padding: '8px',
+        backgroundColor: 'var(--gitlab-bg-tertiary)',
+        borderRadius: '6px',
+        border: '1px solid var(--gitlab-border-light)'
+      }}>
+        {/* Переключатель режима просмотра */}
+        <div style={{ display: 'flex', gap: '4px' }}>
+          <Button 
+            variant={previewMode === 'rendered' ? 'blue' : 'secondary'}
+            size="sm"
+            onClick={() => setPreviewMode('rendered')}
+            title="Предпросмотр с рендерингом"
+          >
+            👁️
+          </Button>
+          <Button 
+            variant={previewMode === 'raw' ? 'blue' : 'secondary'}
+            size="sm"
+            onClick={() => setPreviewMode('raw')}
+            title="Исходный код Markdown"
+          >
+            📝
+          </Button>
+        </div>
+
+        <div style={{ 
+          width: '1px', 
+          height: '20px', 
+          backgroundColor: 'var(--gitlab-border-light)' 
+        }} />
+
+        {/* Управление секциями */}
+        {categoryPreviews.length > 1 && (
+          <>
+            <Button 
+              variant="secondary" 
+              size="sm"
+              onClick={expandAllSections}
+              title="Развернуть все секции"
+            >
+              ⬇️
+            </Button>
+            <Button 
+              variant="secondary" 
+              size="sm"
+              onClick={collapseAllSections}
+              title="Свернуть все секции"
+            >
+              ⬆️
+            </Button>
+          </>
+        )}
       </div>
 
       {/* Статистика */}
@@ -194,57 +275,176 @@ export const MarkdownExport = ({ comments, repository, allFiles, categories }: M
       </div>
 
       {/* Предпросмотр — на всю высоту, скролл здесь */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '0', flex: 1, minHeight: 0, overflowY: 'auto' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '0', flex: 1, minHeight: 0, overflowY: 'auto' }}>
         {/* Разделённые предпросмотры по категориям */}
         {categoryPreviews.length > 0 ? (
-          categoryPreviews.map(section => (
-            <details key={section.key} style={{
-              backgroundColor: 'var(--gitlab-bg-tertiary)',
-              border: '1px solid var(--gitlab-border-light)',
-              borderRadius: '8px',
-              padding: '12px'
-            }}>
-              <summary style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', listStyle: 'none' }}>
-                <span style={{ fontWeight: 600, color: 'var(--gitlab-text-primary)' }}>
-                  {section.title} ({section.count})
-                </span>
-                <span style={{ display: 'flex', gap: '8px' }}>
-                  <Button variant="secondary" size="sm" onClick={() => handleCopySection(section.content)}>
-                    {copied ? '✅' : '📋'}
-                  </Button>
-                  <Button variant="secondary" size="sm" onClick={() => handleDownloadSection(section.content, section.key)}>
-                    💾
-                  </Button>
-                </span>
-              </summary>
-              <div style={{
-                whiteSpace: 'pre',
-                overflowX: 'auto',
-                fontFamily: 'Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-                fontSize: '13px',
-                color: 'var(--gitlab-text-primary)',
-                borderTop: '1px solid var(--gitlab-border-light)',
-                paddingTop: '8px',
-                marginTop: '8px'
+          categoryPreviews.map(section => {
+            const isExpanded = expandedSections.has(section.key);
+            return (
+              <div key={section.key} style={{
+                backgroundColor: 'var(--gitlab-bg-tertiary)',
+                border: '1px solid var(--gitlab-border-light)',
+                borderRadius: '8px',
+                overflow: 'hidden'
               }}>
-                <pre style={{ margin: 0, whiteSpace: 'pre' }}>{section.content}</pre>
+                {/* Header */}
+                <div 
+                  onClick={() => toggleSection(section.key)}
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between', 
+                    cursor: 'pointer', 
+                    padding: '12px',
+                    backgroundColor: isExpanded ? 'var(--gitlab-bg-secondary)' : 'transparent',
+                    borderBottom: isExpanded ? '1px solid var(--gitlab-border-light)' : 'none'
+                  }}
+                >
+                  <span style={{ 
+                    fontWeight: 600, 
+                    color: 'var(--gitlab-text-primary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <span style={{ fontSize: '12px' }}>
+                      {isExpanded ? '📖' : '📘'}
+                    </span>
+                    {section.title} ({section.count})
+                  </span>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <Button 
+                      variant="secondary" 
+                      size="sm" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCopySection(section.content);
+                      }}
+                      title="Скопировать Markdown"
+                    >
+                      {copied ? '✅' : '📋'}
+                    </Button>
+                    <Button 
+                      variant="secondary" 
+                      size="sm" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDownloadSection(section.content, section.key);
+                      }}
+                      title="Скачать файл"
+                    >
+                      💾
+                    </Button>
+                    <span style={{ fontSize: '14px', color: 'var(--gitlab-text-secondary)' }}>
+                      {isExpanded ? '▲' : '▼'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Content */}
+                {isExpanded && (
+                  <div style={{ padding: '16px' }}>
+                    {previewMode === 'rendered' ? (
+                      <div style={{
+                        backgroundColor: 'var(--gitlab-bg-primary)',
+                        border: '1px solid var(--gitlab-border-light)',
+                        borderRadius: '6px',
+                        padding: '16px',
+                        maxHeight: '400px',
+                        overflowY: 'auto'
+                      }}>
+                        <MarkdownRenderer content={section.content} />
+                      </div>
+                    ) : (
+                      <div style={{
+                        backgroundColor: 'var(--gitlab-bg-primary)',
+                        border: '1px solid var(--gitlab-border-light)',
+                        borderRadius: '6px',
+                        padding: '16px',
+                        whiteSpace: 'pre',
+                        overflowX: 'auto',
+                        fontFamily: 'Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                        fontSize: '12px',
+                        color: 'var(--gitlab-text-primary)',
+                        maxHeight: '400px',
+                        overflowY: 'auto'
+                      }}>
+                        <pre style={{ margin: 0, whiteSpace: 'pre' }}>{section.content}</pre>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            </details>
-          ))
+            );
+          })
         ) : (
           // Если категорий нет — один предпросмотр целого отчёта
           <div style={{
             backgroundColor: 'var(--gitlab-bg-tertiary)',
             border: '1px solid var(--gitlab-border-light)',
             borderRadius: '8px',
-            padding: '20px',
-            whiteSpace: 'pre',
-            overflowX: 'auto',
-            fontFamily: 'Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-            fontSize: '13px',
-            color: 'var(--gitlab-text-primary)'
+            overflow: 'hidden'
           }}>
-            <pre style={{ margin: 0, whiteSpace: 'pre' }}>{markdownContent}</pre>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '12px',
+              backgroundColor: 'var(--gitlab-bg-secondary)',
+              borderBottom: '1px solid var(--gitlab-border-light)'
+            }}>
+              <span style={{ fontWeight: 600, color: 'var(--gitlab-text-primary)' }}>
+                📄 Code Review Report
+              </span>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <Button 
+                  variant="secondary" 
+                  size="sm" 
+                  onClick={() => handleCopySection(markdownContent)}
+                  title="Скопировать Markdown"
+                >
+                  {copied ? '✅' : '📋'}
+                </Button>
+                <Button 
+                  variant="secondary" 
+                  size="sm" 
+                  onClick={() => handleDownloadSection(markdownContent, 'full-report')}
+                  title="Скачать файл"
+                >
+                  💾
+                </Button>
+              </div>
+            </div>
+            <div style={{ padding: '16px' }}>
+              {previewMode === 'rendered' ? (
+                <div style={{
+                  backgroundColor: 'var(--gitlab-bg-primary)',
+                  border: '1px solid var(--gitlab-border-light)',
+                  borderRadius: '6px',
+                  padding: '16px',
+                  maxHeight: '500px',
+                  overflowY: 'auto'
+                }}>
+                  <MarkdownRenderer content={markdownContent} />
+                </div>
+              ) : (
+                <div style={{
+                  backgroundColor: 'var(--gitlab-bg-primary)',
+                  border: '1px solid var(--gitlab-border-light)',
+                  borderRadius: '6px',
+                  padding: '16px',
+                  whiteSpace: 'pre',
+                  overflowX: 'auto',
+                  fontFamily: 'Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                  fontSize: '12px',
+                  color: 'var(--gitlab-text-primary)',
+                  maxHeight: '500px',
+                  overflowY: 'auto'
+                }}>
+                  <pre style={{ margin: 0, whiteSpace: 'pre' }}>{markdownContent}</pre>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

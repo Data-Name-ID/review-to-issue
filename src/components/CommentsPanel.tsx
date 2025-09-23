@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import type { CodeComment, Repository, CommentCategory } from '../types';
 import { generateCodeLink } from '../utils/linkUtils';
-import { Button, Badge, Textarea, FormActions } from './ui';
+import { Button, Badge, FormActions, CategorySelector } from './ui';
+import { MarkdownEditor } from './MarkdownEditor';
+import { MarkdownRenderer } from './MarkdownRenderer';
 import { getContrastTextColor } from '../utils/categoryColors';
 
 interface CommentsPanelProps {
@@ -11,6 +13,8 @@ interface CommentsPanelProps {
   onUpdateComment: (commentId: string, updates: Partial<CodeComment>) => void;
   onRemoveComment: (commentId: string) => void;
   onClearComments: () => void;
+  onAddCategory?: (name: string, color: string) => string;
+  onNavigateToComment?: (filePath: string, lineNumber: number) => void;
 }
 
 interface CommentItemProps {
@@ -19,23 +23,48 @@ interface CommentItemProps {
   categories: CommentCategory[];
   onUpdate: (updates: Partial<CodeComment>) => void;
   onRemove: () => void;
+  onAddCategory?: (name: string, color: string) => string;
+  onNavigateToComment?: (filePath: string, lineNumber: number) => void;
 }
 
-const CommentItem = ({ comment, repository, categories, onUpdate, onRemove }: CommentItemProps) => {
+const CommentItem = ({ comment, repository, categories, onUpdate, onRemove, onAddCategory, onNavigateToComment }: CommentItemProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(comment.comment);
+  const [editCategoryId, setEditCategoryId] = useState<string | 'new' | ''>(comment.categoryId || '');
   const category = comment.categoryId ? categories.find(c => c.id === comment.categoryId) : undefined;
 
   const handleSave = () => {
-    onUpdate({
+    const updates: Partial<CodeComment> = {
       comment: editText.trim()
-    });
+    };
+    
+    if (editCategoryId && editCategoryId !== 'new') {
+      updates.categoryId = editCategoryId;
+    } else if (!editCategoryId) {
+      updates.categoryId = undefined;
+    }
+    
+    onUpdate(updates);
     setIsEditing(false);
   };
 
   const handleCancel = () => {
     setEditText(comment.comment);
+    setEditCategoryId(comment.categoryId || '');
     setIsEditing(false);
+  };
+
+  const startEditing = () => {
+    setEditText(comment.comment);
+    setEditCategoryId(comment.categoryId || '');
+    setIsEditing(true);
+  };
+
+  const handleCreateCategory = (name: string, color: string) => {
+    if (onAddCategory) {
+      const categoryId = onAddCategory(name, color);
+      setEditCategoryId(categoryId);
+    }
   };
 
   const formatDate = (date: Date) => {
@@ -62,29 +91,50 @@ const CommentItem = ({ comment, repository, categories, onUpdate, onRemove }: Co
   return (
     <div className="gitlab-comment">
       {/* Заголовок комментария */}
-      <div className="gitlab-comment-header">
-        <div className="d-flex align-center gap-2">
+      <div className="gitlab-comment-header" style={{ 
+        display: 'block !important' as any,
+        flexDirection: 'column !important' as any 
+      }}>
+        {/* Первая строка: имя файла */}
+        <div style={{ 
+          marginBottom: '6px'
+        }}>
           <span style={{ 
             fontSize: '14px',
             fontWeight: '500',
-            color: 'var(--gitlab-text-primary)'
+            color: 'var(--gitlab-text-primary)',
+            display: 'block',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap'
           }}>
             {comment.filePath}
           </span>
-                 <Badge 
-                   variant={comment.isFileComment ? 'success' : 'secondary'}
-                   size="sm"
-                 >
-                   {comment.isFileComment 
-                     ? 'файл'
-                     : comment.startLine === comment.endLine 
-                       ? `${comment.startLine}`
-                       : `${comment.startLine}-${comment.endLine}`
-                   }
-                 </Badge>
+        </div>
+        
+        {/* Вторая строка: бейдж номера строки + категория */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          marginBottom: '6px',
+          minHeight: '20px'
+        }}>
+          <Badge 
+            variant={comment.isFileComment ? 'success' : 'secondary'}
+            size="sm"
+            style={{ flexShrink: 0 }}
+          >
+            {comment.isFileComment 
+              ? 'файл'
+              : comment.startLine === comment.endLine 
+                ? `${comment.startLine}`
+                : `${comment.startLine}-${comment.endLine}`
+            }
+          </Badge>
+          
           {category && (
             <span style={{
-              marginLeft: '6px',
               padding: '3px 8px',
               borderRadius: '12px',
               backgroundColor: category.color,
@@ -92,48 +142,71 @@ const CommentItem = ({ comment, repository, categories, onUpdate, onRemove }: Co
               fontSize: '11px',
               fontWeight: 500,
               border: '1px solid var(--gitlab-border-light)',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+              boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+              display: 'inline-block'
             }}>
               {category.name}
             </span>
           )}
         </div>
         
-               <div className="gitlab-comment-actions">
-                 {getCodeLink() && (
-                 <Button
-                   variant="secondary"
-                   size="sm"
-                   onClick={() => window.open(getCodeLink()!, '_blank')}
-                 >
-                   🔗
-                 </Button>
-                 )}
-                 <Button
-                   variant="secondary"
-                   size="sm"
-                   onClick={() => setIsEditing(!isEditing)}
-                 >
-                   ✏️
-                 </Button>
-                 <Button
-                   variant="secondary"
-                   size="sm"
-                   onClick={onRemove}
-                 >
-                   🗑️
-                 </Button>
-               </div>
+        {/* Третья строка: кнопки действий */}
+        <div style={{ 
+          display: 'flex', 
+          gap: '4px',
+          justifyContent: 'flex-end'
+        }}>
+          {onNavigateToComment && (
+            <Button
+              variant="blue"
+              size="sm"
+              onClick={() => onNavigateToComment(comment.filePath, comment.startLine)}
+              title="Перейти к комментарию в коде"
+            >
+              🔍
+            </Button>
+          )}
+          {getCodeLink() && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => window.open(getCodeLink()!, '_blank')}
+            >
+              🔗
+            </Button>
+          )}
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={startEditing}
+          >
+            ✏️
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={onRemove}
+          >
+            🗑️
+          </Button>
+        </div>
       </div>
 
       {/* Комментарий */}
       {isEditing ? (
         <div className="gitlab-comment-body">
-          <Textarea
+          <MarkdownEditor
             value={editText}
-            onChange={(e) => setEditText(e.target.value)}
+            onChange={setEditText}
             rows={3}
-            style={{ marginBottom: '12px' }}
+            style={{ marginBottom: '6px' }}
+          />
+          <CategorySelector
+            categories={categories}
+            selectedCategoryId={editCategoryId}
+            onCategoryChange={setEditCategoryId}
+            onCreateCategory={handleCreateCategory}
+            placeholder="Изменить категорию комментария"
           />
           <FormActions
             onCancel={handleCancel}
@@ -146,13 +219,15 @@ const CommentItem = ({ comment, repository, categories, onUpdate, onRemove }: Co
       ) : (
         <div className="gitlab-comment-body">
           <div style={{
-            fontSize: '14px',
-            color: 'var(--gitlab-text-primary)',
-            lineHeight: '1.5',
-            marginBottom: '8px',
-            whiteSpace: 'pre-wrap'
+            marginBottom: '8px'
           }}>
-            {comment.comment}
+            <MarkdownRenderer 
+              content={comment.comment}
+              style={{
+                fontSize: '14px',
+                lineHeight: '1.5'
+              }}
+            />
           </div>
           <div style={{
             fontSize: '12px',
@@ -172,7 +247,9 @@ export const CommentsPanel = ({
   categories,
   onUpdateComment, 
   onRemoveComment, 
-  onClearComments 
+  onClearComments,
+  onAddCategory,
+  onNavigateToComment
 }: CommentsPanelProps) => {
   // Группировка комментариев по файлам
   const commentsByFile = comments.reduce((acc, comment) => {
@@ -258,6 +335,8 @@ export const CommentsPanel = ({
                         categories={categories}
                         onUpdate={(updates) => onUpdateComment(comment.id, updates)}
                         onRemove={() => onRemoveComment(comment.id)}
+                        onAddCategory={onAddCategory}
+                        onNavigateToComment={onNavigateToComment}
                       />
                     ))}
           </div>

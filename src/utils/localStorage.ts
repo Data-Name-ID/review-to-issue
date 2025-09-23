@@ -1,4 +1,4 @@
-import type { CodeComment, Repository } from '../types';
+import type { CodeComment, Repository, CommentCategory, CommentTemplate } from '../types';
 
 // Ключи для localStorage
 export const STORAGE_KEYS = {
@@ -14,7 +14,8 @@ export const STORAGE_KEYS = {
   LAST_DIRECTORY_HANDLE: 'code-review-last-directory-handle',
   ALL_FILES: 'code-review-all-files',
   NEW_REPOSITORY_FLAG: 'code-review-new-repository-flag',
-  CATEGORIES: 'code-review-categories'
+  CATEGORIES: 'code-review-categories',
+  TEMPLATES: 'code-review-templates'
 } as const;
 
 // Безопасное чтение из localStorage
@@ -103,12 +104,12 @@ export const loadShowSidebar = (): boolean => {
   return getFromStorage<boolean>(STORAGE_KEYS.SHOW_SIDEBAR, true);
 };
 
-export const saveActivePanel = (panel: 'files' | 'comments' | 'export'): void => {
+export const saveActivePanel = (panel: 'files' | 'comments' | 'export' | 'templates'): void => {
   setToStorage(STORAGE_KEYS.ACTIVE_PANEL, panel);
 };
 
-export const loadActivePanel = (): 'files' | 'comments' | 'export' => {
-  return getFromStorage<'files' | 'comments' | 'export'>(STORAGE_KEYS.ACTIVE_PANEL, 'files');
+export const loadActivePanel = (): 'files' | 'comments' | 'export' | 'templates' => {
+  return getFromStorage<'files' | 'comments' | 'export' | 'templates'>(STORAGE_KEYS.ACTIVE_PANEL, 'files');
 };
 
 export const saveVirtualizationEnabled = (enabled: boolean): void => {
@@ -173,12 +174,8 @@ export interface StoredCategory {
   createdAt: string; // сохраняем как строку ISO
 }
 
-export interface CommentCategory {
-  id: string;
-  name: string;
-  color: string;
-  createdAt: Date;
-}
+// Удаляем дублирующий интерфейс - используем из types
+// export interface CommentCategory
 
 export const saveCategories = (categories: CommentCategory[]): void => {
   const payload: StoredCategory[] = categories.map(c => ({
@@ -197,5 +194,40 @@ export const loadCategories = (): CommentCategory[] => {
     name: s.name,
     color: s.color,
     createdAt: new Date(s.createdAt)
+  }));
+};
+
+// === COMMENT TEMPLATES ===
+
+interface StoredTemplate {
+  id: string;
+  name: string;
+  content: string;
+  createdAt: string;
+  lastUsed?: string;
+  useCount: number;
+}
+
+export const saveTemplates = (templates: CommentTemplate[]): void => {
+  const payload: StoredTemplate[] = templates.map(t => ({
+    id: t.id,
+    name: t.name,
+    content: t.content,
+    createdAt: t.createdAt.toISOString(),
+    lastUsed: t.lastUsed?.toISOString(),
+    useCount: t.useCount
+  }));
+  setToStorage(STORAGE_KEYS.TEMPLATES, payload);
+};
+
+export const loadTemplates = (): CommentTemplate[] => {
+  const stored = getFromStorage<StoredTemplate[]>(STORAGE_KEYS.TEMPLATES, []);
+  return stored.map(s => ({
+    id: s.id,
+    name: s.name,
+    content: s.content,
+    createdAt: new Date(s.createdAt),
+    lastUsed: s.lastUsed ? new Date(s.lastUsed) : undefined,
+    useCount: s.useCount
   }));
 };

@@ -51,3 +51,13 @@ export interface CommentCategory {
   color: string; // HEX или CSS цвет
   createdAt: Date;
 }
+
+// Шаблон комментария (снипет)
+export interface CommentTemplate {
+  id: string;
+  name: string;
+  content: string; // markdown содержимое
+  createdAt: Date;
+  lastUsed?: Date;
+  useCount: number;
+}
