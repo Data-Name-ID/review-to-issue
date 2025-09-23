@@ -1,0 +1,39 @@
+{
+  "name": "review-to-issue",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "build:github": "sed -i.bak \"s|base: './',|base: '/review-to-issue/',|g\" vite.config.ts && npm run build && mv vite.config.ts.bak vite.config.ts",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "serve": "node serve.cjs"
+  },
+  "dependencies": {
+    "@types/prismjs": "^1.26.5",
+    "@types/react-syntax-highlighter": "^15.5.13",
+    "@types/react-window": "^1.8.8",
+    "prismjs": "^1.30.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-syntax-highlighter": "^15.6.6",
+    "react-window": "^2.1.1",
+    "react-window-infinite-loader": "^2.0.0",
+    "shiki": "^3.13.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.36.0",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.3",
+    "eslint": "^9.36.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.20",
+    "globals": "^16.4.0",
+    "typescript": "~5.8.3",
+    "typescript-eslint": "^8.44.0",
+    "vite": "^7.1.7"
+  }
+}
