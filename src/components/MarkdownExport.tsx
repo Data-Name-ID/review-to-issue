@@ -23,6 +23,7 @@ export const MarkdownExport = ({ comments, repository, allFiles, categories }: M
   const [copiedSections, setCopiedSections] = useState<Set<string>>(new Set());
   const [previewMode, setPreviewMode] = useState<'raw' | 'rendered'>('rendered');
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const [weekNumber, setWeekNumber] = useState<number>(1);
 
   // Вспомогательные функции для группировки комментариев
   const groupCommentsByFile = useCallback((comments: CodeComment[]): Record<string, CodeComment[]> => {
@@ -150,9 +151,20 @@ export const MarkdownExport = ({ comments, repository, allFiles, categories }: M
     setExpandedSections(new Set());
   }, []);
 
-  const handleCopySection = useCallback(async (content: string, sectionKey: string) => {
+  const handleCopySection = useCallback(async (content: string, sectionKey: string, isTitle: boolean = false) => {
     try {
-      await navigator.clipboard.writeText(content);
+      let textToCopy = content;
+      
+      // Если это копирование названия категории, форматируем его
+      if (isTitle && sectionKey.includes('-title')) {
+        const categoryKey = sectionKey.replace('-title', '');
+        const categoryIndex = categoryPreviews.findIndex(section => section.key === categoryKey);
+        // Убираем "Категория:" из названия, если оно есть
+        const cleanTitle = content.replace(/^Категория:\s*/, '');
+        textToCopy = `[${weekNumber}.${categoryIndex + 1}] ${cleanTitle}`;
+      }
+      
+      await navigator.clipboard.writeText(textToCopy);
       setCopiedSections(prev => new Set([...prev, sectionKey]));
       setTimeout(() => {
         setCopiedSections(prev => {
@@ -164,7 +176,7 @@ export const MarkdownExport = ({ comments, repository, allFiles, categories }: M
     } catch {
       // no-op
     }
-  }, []);
+  }, [weekNumber, categoryPreviews]);
 
   // Константы стилей
   const styles = {
@@ -304,6 +316,27 @@ export const MarkdownExport = ({ comments, repository, allFiles, categories }: M
         <h3 style={styles.title}>
           Экспорт ({comments.length})
         </h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <label style={{ fontSize: '13px', color: 'var(--gitlab-text-secondary)' }}>
+            Номер недели:
+          </label>
+          <input
+            type="number"
+            min="1"
+            max="52"
+            value={weekNumber}
+            onChange={(e) => setWeekNumber(parseInt(e.target.value) || 1)}
+            style={{
+              width: '60px',
+              padding: '4px 8px',
+              border: '1px solid var(--gitlab-border-light)',
+              borderRadius: '4px',
+              backgroundColor: 'var(--gitlab-bg-secondary)',
+              color: 'var(--gitlab-text-primary)',
+              fontSize: '13px'
+            }}
+          />
+        </div>
       </div>
 
       {/* Панель управления */}
@@ -386,7 +419,7 @@ export const MarkdownExport = ({ comments, repository, allFiles, categories }: M
                 >
                   <span style={styles.sectionTitle}>
                     {section.category && <CategoryDot color={section.category.color} />}
-                    {section.title} ({section.count})
+                    [{weekNumber}.{categoryPreviews.findIndex(s => s.key === section.key) + 1}] {section.title.replace(/^Категория:\s*/, '')} ({section.count})
                   </span>
                   <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                     <Button 
@@ -394,7 +427,7 @@ export const MarkdownExport = ({ comments, repository, allFiles, categories }: M
                       size="sm" 
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleCopySection(section.title, `${section.key}-title`);
+                        handleCopySection(section.title, `${section.key}-title`, true);
                       }}
                       title="Скопировать название категории"
                     >
