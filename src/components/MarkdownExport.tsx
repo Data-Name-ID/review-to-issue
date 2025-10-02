@@ -25,6 +25,12 @@ export const MarkdownExport = ({ comments, repository, allFiles, categories }: M
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [weekNumber, setWeekNumber] = useState<number>(1);
 
+  // Функция для получения порядкового номера недели словами
+  const getWeekNumberInWords = (num: number): string => {
+    const weekNames = ['первой', 'второй', 'третьей', 'четвёртой', 'пятой', 'шестой', 'седьмой', 'восьмой'];
+    return weekNames[num - 1] || `${num}-й`;
+  };
+
   // Вспомогательные функции для группировки комментариев
   const groupCommentsByFile = useCallback((comments: CodeComment[]): Record<string, CodeComment[]> => {
     return comments.reduce((acc, comment) => {
@@ -95,6 +101,21 @@ export const MarkdownExport = ({ comments, repository, allFiles, categories }: M
     const { byCat, uncategorized } = groupCommentsByCategory(comments, categories);
     const sections: CategorySection[] = [];
 
+    // Добавляем перманентную категорию "Прочти меня" в начало
+    const readMeContent = `Привет :) Хороший проект, но есть несколько важных замечаний. В комментариях я буду использовать префиксы, чтобы было понятнее, насколько то или иное замечание критично:
+- [!!!] - серьезная проблема в коде, влияющая на функциональность проекта или ломающая ее, которую необходимо поправить
+- [!] - важное замечание, которое необходимо поправить
+- [?] - вопрос по реализации, на который надо ответить, но править необязательно
+- [+] - предложение, возможное улучшение, которое править необязательно
+- все остальные комментарии без тегов являются необязательными для исправления`;
+
+    sections.push({
+      key: 'readme',
+      title: `Прочти меня: проверка после ${getWeekNumberInWords(weekNumber)} недели`,
+      count: 0,
+      content: readMeContent
+    });
+
     // Обрабатываем категории с комментариями
     byCat.forEach((val, key) => {
       if (val.items.length > 0) {
@@ -128,7 +149,7 @@ export const MarkdownExport = ({ comments, repository, allFiles, categories }: M
     }
 
     return sections;
-  }, [comments, repository, categories, groupCommentsByCategory, groupCommentsByFile, generateFileContent]);
+  }, [comments, repository, categories, groupCommentsByCategory, groupCommentsByFile, generateFileContent, weekNumber, getWeekNumberInWords]);
 
   // Обработчики событий
   const toggleSection = useCallback((sectionKey: string) => {
@@ -161,7 +182,7 @@ export const MarkdownExport = ({ comments, repository, allFiles, categories }: M
         const categoryIndex = categoryPreviews.findIndex(section => section.key === categoryKey);
         // Убираем "Категория:" из названия, если оно есть
         const cleanTitle = content.replace(/^Категория:\s*/, '');
-        textToCopy = `[${weekNumber}.${categoryIndex + 2}] ${cleanTitle}`;
+        textToCopy = `[${weekNumber}.${categoryIndex + 1}] ${cleanTitle}`;
       }
       
       await navigator.clipboard.writeText(textToCopy);
@@ -419,7 +440,7 @@ export const MarkdownExport = ({ comments, repository, allFiles, categories }: M
                 >
                   <span style={styles.sectionTitle}>
                     {section.category && <CategoryDot color={section.category.color} />}
-                    [{weekNumber}.{categoryPreviews.findIndex(s => s.key === section.key) + 2}] {section.title.replace(/^Категория:\s*/, '')} ({section.count})
+                    [{weekNumber}.{categoryPreviews.findIndex(s => s.key === section.key) + 1}] {section.title.replace(/^Категория:\s*/, '')} ({section.count})
                   </span>
                   <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                     <Button 
