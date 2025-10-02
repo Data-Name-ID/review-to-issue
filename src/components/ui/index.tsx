@@ -46,6 +46,7 @@ interface SectionProps {
 interface InfoCardProps {
   children: React.ReactNode;
   type?: 'info' | 'warning' | 'success' | 'danger';
+  style?: React.CSSProperties;
 }
 
 // === BUTTON COMPONENT ===
@@ -411,7 +412,7 @@ export const Section: React.FC<SectionProps> = ({ title, icon, children, classNa
 };
 
 // === INFO CARD COMPONENT ===
-export const InfoCard: React.FC<InfoCardProps> = ({ children, type = 'info' }) => {
+export const InfoCard: React.FC<InfoCardProps> = ({ children, type = 'info', style }) => {
   const getTypeStyles = () => {
     switch (type) {
       case 'warning':
@@ -445,7 +446,8 @@ export const InfoCard: React.FC<InfoCardProps> = ({ children, type = 'info' }) =
   const cardStyle = {
     ...getTypeStyles(),
     padding: '12px',
-    borderRadius: '6px'
+    borderRadius: '6px',
+    ...style
   };
 
   return (
