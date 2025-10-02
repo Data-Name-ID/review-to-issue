@@ -1,4 +1,4 @@
-import { useState, memo, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, memo, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { CodeComment, CommentCategory, CommentTemplate } from '../types';
 import { HighlightedCode } from './HighlightedCode';
 import { MarkdownRenderer } from './MarkdownRenderer';
@@ -6,6 +6,7 @@ import { MarkdownEditor } from './MarkdownEditor';
 import { TemplateSelector } from './TemplateSelector';
 import { Button, Textarea, FormActions, CategorySelector } from './ui';
 import { getContrastTextColor } from '../utils/categoryColors';
+import { getFileIcon as getFileIconUtil } from '../utils/fileIcons';
 
 interface AllFilesViewerProps {
   files: Array<{ path: string; content: string }>;
@@ -58,17 +59,7 @@ const FileStub = memo(({ file, comments, fileIndex, savedHeight }: FileStubProps
   
   
   const getFileIcon = (fileName: string) => {
-    const ext = fileName.split('.').pop()?.toLowerCase()
-    switch (ext) {
-      case 'js': case 'jsx': return '📄'
-      case 'ts': case 'tsx': return '🔷'
-      case 'py': return '🐍'
-      case 'css': case 'scss': return '🎨'
-      case 'html': return '🌐'
-      case 'json': return '📋'
-      case 'md': return '📝'
-      default: return '📄'
-    }
+    return getFileIconUtil(fileName, false);
   };
 
   return (
@@ -90,7 +81,10 @@ const FileStub = memo(({ file, comments, fileIndex, savedHeight }: FileStubProps
       {/* Заглушка header */}
       <div className="gitlab-code-header" style={{ backgroundColor: 'var(--gitlab-bg-secondary)' }}>
         <div className="d-flex align-center gap-2">
-          <span>{getFileIcon(file.path)}</span>
+          {React.createElement(getFileIcon(file.path), {
+            size: 16,
+            style: { color: 'var(--gitlab-text-secondary)' }
+          })}
           <span style={{ color: 'var(--gitlab-text-secondary)' }}>{file.path}</span>
         </div>
         <div className="d-flex align-center gap-3 text-secondary" style={{ fontSize: '12px' }}>
@@ -153,6 +147,44 @@ const FileViewer = memo(({ file, comments, categories, templates, onAddCategory,
 
   // Выбор категории для файлового комментария
   const [fileCategoryId, setFileCategoryId] = useState<string | 'new' | ''>('');
+  
+  // Позиция курсора для вставки шаблонов
+  const [cursorPosition, setCursorPosition] = useState<{ start: number; end: number } | null>(null);
+  const [activeEditorId, setActiveEditorId] = useState<string | null>(null);
+
+  // Постоянно отслеживаем позицию курсора
+  useEffect(() => {
+    const handleSelectionChange = () => {
+      const activeElement = document.activeElement as HTMLTextAreaElement;
+      if (activeElement && activeElement.tagName === 'TEXTAREA' && activeElement.dataset.editorId) {
+        const editorId = activeElement.dataset.editorId;
+        const position = {
+          start: activeElement.selectionStart,
+          end: activeElement.selectionEnd
+        };
+        setActiveEditorId(editorId);
+        setCursorPosition(position);
+      }
+    };
+
+    // Отслеживаем изменения выделения
+    document.addEventListener('selectionchange', handleSelectionChange);
+    
+    // Также отслеживаем клики и фокус
+    document.addEventListener('click', handleSelectionChange);
+    document.addEventListener('focusin', handleSelectionChange);
+
+    return () => {
+      document.removeEventListener('selectionchange', handleSelectionChange);
+      document.removeEventListener('click', handleSelectionChange);
+      document.removeEventListener('focusin', handleSelectionChange);
+    };
+  }, []);
+
+  // Функции для работы с шаблонами
+  const handleTemplateRequest = useCallback((editorId: string) => {
+    onTemplateRequest?.(editorId);
+  }, [onTemplateRequest]);
 
   // Оптимизация: ограничиваем большие файлы
   const lines = file.content.split('\n');
@@ -162,17 +194,71 @@ const FileViewer = memo(({ file, comments, categories, templates, onAddCategory,
   
   const fileComments = comments.filter(c => c.filePath === file.path);
 
+  // Функция для вставки текста в место курсора
+  const insertTextAtCursor = useCallback((text: string, setter: (value: string) => void, currentValue: string, position?: { start: number; end: number } | null, editorId?: string) => {
+    if (position) {
+      // Используем сохраненную позицию курсора
+      const newValue = currentValue.substring(0, position.start) + text + currentValue.substring(position.end);
+      setter(newValue);
+      
+      // Устанавливаем курсор после вставленного текста
+      setTimeout(() => {
+        let targetElement: HTMLTextAreaElement | null = null;
+        
+        if (editorId) {
+          // Ищем textarea по ID
+          const textarea = document.querySelector(`textarea[data-editor-id="${editorId}"]`) as HTMLTextAreaElement;
+          if (textarea) {
+            targetElement = textarea;
+          }
+        }
+        
+        if (!targetElement) {
+          // Fallback: ищем активный textarea
+          targetElement = document.activeElement as HTMLTextAreaElement;
+        }
+        
+        if (targetElement && targetElement.tagName === 'TEXTAREA') {
+          targetElement.focus();
+          targetElement.setSelectionRange(position.start + text.length, position.start + text.length);
+        }
+      }, 0);
+    } else {
+      // Fallback: находим активный textarea
+      const activeElement = document.activeElement as HTMLTextAreaElement;
+      if (activeElement && activeElement.tagName === 'TEXTAREA') {
+        const start = activeElement.selectionStart;
+        const end = activeElement.selectionEnd;
+        const newValue = currentValue.substring(0, start) + text + currentValue.substring(end);
+        setter(newValue);
+        
+        // Устанавливаем курсор после вставленного текста
+        setTimeout(() => {
+          activeElement.focus();
+          activeElement.setSelectionRange(start + text.length, start + text.length);
+        }, 0);
+      } else {
+        // Если нет активного textarea, просто добавляем в конец
+        setter(currentValue + text);
+      }
+    }
+  }, []);
+
   // Обработчик вставки шаблонов
   useEffect(() => {
     const handleInsertTemplate = (event: CustomEvent<{ editorId: string; content: string }>) => {
       const { editorId, content } = event.detail;
       
-      if (editorId === `file-comment-${file.path}`) {
-        setFileCommentText(content);
-      } else if (editorId.startsWith(`new-comment-${file.path}-`)) {
-        setNewCommentText(content);
-      } else if (editorId.startsWith(`edit-comment-`)) {
-        setEditText(content);
+      // Используем активный редактор и позицию курсора
+      const currentEditorId = activeEditorId || editorId;
+      const currentPosition = cursorPosition;
+      
+      if (currentEditorId === `file-comment-${file.path}`) {
+        insertTextAtCursor(content, setFileCommentText, fileCommentText, currentPosition, currentEditorId);
+      } else if (currentEditorId.startsWith(`new-comment-${file.path}-`)) {
+        insertTextAtCursor(content, setNewCommentText, newCommentText, currentPosition, currentEditorId);
+      } else if (currentEditorId.startsWith(`edit-comment-`)) {
+        insertTextAtCursor(content, setEditText, editText, currentPosition, currentEditorId);
       }
     };
 
@@ -181,20 +267,10 @@ const FileViewer = memo(({ file, comments, categories, templates, onAddCategory,
     return () => {
       window.removeEventListener('insertTemplate', handleInsertTemplate as EventListener);
     };
-  }, [file.path]);
+  }, [file.path, fileCommentText, newCommentText, editText, insertTextAtCursor, cursorPosition, activeEditorId]);
 
   const getFileIcon = (fileName: string) => {
-    const ext = fileName.split('.').pop()?.toLowerCase()
-    switch (ext) {
-      case 'js': case 'jsx': return '📄'
-      case 'ts': case 'tsx': return '🔷'
-      case 'py': return '🐍'
-      case 'css': case 'scss': return '🎨'
-      case 'html': return '🌐'
-      case 'json': return '📋'
-      case 'md': return '📝'
-      default: return '📄'
-    }
+    return getFileIconUtil(fileName, false);
   };
 
   const isMarkdownFile = (fileName: string) => {
@@ -361,7 +437,10 @@ const FileViewer = memo(({ file, comments, categories, templates, onAddCategory,
       {/* GitLab File Header */}
       <div className="gitlab-code-header">
         <div className="d-flex align-center gap-2">
-          <span>{getFileIcon(file.path)}</span>
+          {React.createElement(getFileIcon(file.path), {
+            size: 16,
+            style: { color: 'var(--gitlab-text-secondary)' }
+          })}
           <span style={{
             ...(isReadmeFile(file.path) && {
               fontWeight: '600',
@@ -444,10 +523,11 @@ const FileViewer = memo(({ file, comments, categories, templates, onAddCategory,
             onChange={setFileCommentText}
             placeholder="Введите комментарий ко всему файлу..."
             autoFocus
-            rows={3}
-            style={{ marginBottom: '6px' }}
+            rows={5}
             showTemplateButton={templates && templates.length > 0}
-            onTemplateRequest={() => onTemplateRequest?.(`file-comment-${file.path}`)}
+            onTemplateRequest={() => handleTemplateRequest(`file-comment-${file.path}`)}
+            editorId={`file-comment-${file.path}`}
+            style={{ marginBottom: '6px' }}
           />
           <CategorySelector
             categories={categories}
@@ -477,7 +557,7 @@ const FileViewer = memo(({ file, comments, categories, templates, onAddCategory,
         return (
           <div key={comment.id} className="gitlab-comment" style={{ margin: '0', borderRadius: '0', borderTop: 'none' }}>
             <div className="gitlab-comment-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
                 <span>Комментарий к файлу</span>
                 {/* Категория в заголовке */}
                 {category && (
@@ -648,10 +728,11 @@ const FileViewer = memo(({ file, comments, categories, templates, onAddCategory,
                       onChange={setNewCommentText}
                       placeholder="Введите ваш комментарий..."
                       autoFocus
-                      rows={3}
-                      style={{ marginBottom: '6px' }}
+                      rows={5}
                       showTemplateButton={templates && templates.length > 0}
-                      onTemplateRequest={() => onTemplateRequest?.(`new-comment-${file.path}-${lineNumber}`)}
+                      onTemplateRequest={() => handleTemplateRequest(`new-comment-${file.path}-${lineNumber}`)}
+                      editorId={`new-comment-${file.path}-${lineNumber}`}
+                      style={{ marginBottom: '6px' }}
                     />
                     <CategorySelector
                       categories={categories}
@@ -684,7 +765,7 @@ const FileViewer = memo(({ file, comments, categories, templates, onAddCategory,
                   return (
                           <div key={comment.id} className="gitlab-comment">
                             <div className="gitlab-comment-header">
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
                                 <span>
                                   {isRange ? `${comment.startLine}-${comment.endLine}` : `${comment.startLine}`}
                                 </span>
@@ -726,10 +807,11 @@ const FileViewer = memo(({ file, comments, categories, templates, onAddCategory,
                           <MarkdownEditor
                             value={editText}
                             onChange={setEditText}
-                            rows={3}
+                            rows={5}
                             style={{ marginBottom: '6px' }}
                             showTemplateButton={templates && templates.length > 0}
-                            onTemplateRequest={() => onTemplateRequest?.(`edit-comment-${comment.id}`)}
+                            onTemplateRequest={() => handleTemplateRequest(`edit-comment-${comment.id}`)}
+                            editorId={`edit-comment-${comment.id}`}
                           />
                           <CategorySelector
                             categories={categories}
@@ -879,8 +961,11 @@ export const AllFilesViewer = ({ files, comments, categories, templates, onAddCa
     setShowTemplateSelector(true);
   }, []);
 
-  const handleTemplateSelect = useCallback((content: string) => {
-    if (activeCommentEditor && onUseTemplate) {
+  const handleTemplateSelect = useCallback((content: string, templateId?: string) => {
+    if (activeCommentEditor && onUseTemplate && templateId) {
+      // Обновляем счетчик использования шаблона
+      onUseTemplate(templateId);
+      
       // Используем глобальный хук для обновления содержимого активного редактора
       const event = new CustomEvent('insertTemplate', {
         detail: { editorId: activeCommentEditor, content }
@@ -895,6 +980,7 @@ export const AllFilesViewer = ({ files, comments, categories, templates, onAddCa
     setShowTemplateSelector(false);
     setActiveCommentEditor(null);
   }, []);
+
 
   // Функция сохранения высоты файла перед виртуализацией
   const saveFileHeight = useCallback((fileIndex: number) => {

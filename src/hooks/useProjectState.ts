@@ -507,6 +507,84 @@ export const useProjectState = () => {
     return duplicated.id;
   }, [templates]);
 
+  // === ФУНКЦИИ ДЛЯ ИМПОРТА ДАННЫХ ===
+
+  const importCategories = useCallback((importedCategories: CommentCategory[]) => {
+    setCategories(prev => {
+      const existing = new Map(prev.map(c => [c.id, c]));
+      const merged = [...prev];
+      
+      importedCategories.forEach(imported => {
+        if (existing.has(imported.id)) {
+          // Обновляем существующую категорию
+          const index = merged.findIndex(c => c.id === imported.id);
+          if (index !== -1) {
+            merged[index] = imported;
+          }
+        } else {
+          // Добавляем новую категорию
+          merged.push(imported);
+        }
+      });
+      
+      return merged;
+    });
+  }, []);
+
+  const importTemplates = useCallback((importedTemplates: CommentTemplate[]) => {
+    setTemplates(prev => {
+      const existing = new Map(prev.map(t => [t.id, t]));
+      const merged = [...prev];
+      
+      importedTemplates.forEach(imported => {
+        if (existing.has(imported.id)) {
+          // Обновляем существующий шаблон
+          const index = merged.findIndex(t => t.id === imported.id);
+          if (index !== -1) {
+            merged[index] = imported;
+          }
+        } else {
+          // Добавляем новый шаблон
+          merged.push(imported);
+        }
+      });
+      
+      return merged;
+    });
+  }, []);
+
+  const importComments = useCallback((importedComments: CodeComment[]) => {
+    setState(prev => {
+      const existing = new Map(prev.comments.map(c => [c.id, c]));
+      const merged = [...prev.comments];
+      
+      importedComments.forEach(imported => {
+        if (existing.has(imported.id)) {
+          // Обновляем существующий комментарий
+          const index = merged.findIndex(c => c.id === imported.id);
+          if (index !== -1) {
+            merged[index] = imported;
+          }
+        } else {
+          // Добавляем новый комментарий
+          merged.push(imported);
+        }
+      });
+      
+      return {
+        ...prev,
+        comments: merged
+      };
+    });
+  }, []);
+
+  const importRepository = useCallback((importedRepository: Repository) => {
+    setState(prev => ({
+      ...prev,
+      repository: importedRepository
+    }));
+  }, []);
+
   // Устанавливаем глобальную функцию для fallback обработки
   React.useEffect(() => {
     (window as WindowWithFileSystemAPI).handleDirectoryFallback = handleDirectoryFallback;
@@ -543,5 +621,9 @@ export const useProjectState = () => {
     removeTemplate,
     useTemplate,
     duplicateTemplate,
+    importCategories,
+    importTemplates,
+    importComments,
+    importRepository,
   };
 };

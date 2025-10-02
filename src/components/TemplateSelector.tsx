@@ -5,7 +5,7 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface TemplateSelectorProps {
   templates: CommentTemplate[];
-  onSelectTemplate: (content: string) => void;
+  onSelectTemplate: (content: string, templateId: string) => void;
   onClose: () => void;
   style?: React.CSSProperties;
 }
@@ -53,7 +53,7 @@ export const TemplateSelector = ({
 
 
   const handleTemplateSelect = (template: CommentTemplate) => {
-    onSelectTemplate(template.content);
+    onSelectTemplate(template.content, template.id);
     onClose();
   };
 

@@ -1,5 +1,6 @@
-import { useState, useMemo, useCallback, memo } from 'react'
+import React, { useState, useMemo, useCallback, memo } from 'react'
 import type { CodeComment } from '../types'
+import { getFileIcon } from '../utils/fileIcons'
 
 interface FileTreeProps {
   files: Array<{ path: string; content: string }>
@@ -78,7 +79,11 @@ const FileTreeItem = memo(({
           <div className="gitlab-file-expand-icon"></div>
         )}
         
-        <div className="gitlab-file-name">
+        <div className="gitlab-file-name" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {React.createElement(getFileIcon(node.name, node.isDirectory, node.children), {
+            size: 14,
+            style: { color: 'var(--gitlab-text-secondary)' }
+          })}
           {node.name}
         </div>
         

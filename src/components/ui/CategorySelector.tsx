@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import type { CommentCategory } from '../../types';
 import { CATEGORY_COLOR_POOL, getNextAvailableColor, getContrastTextColor } from '../../utils/categoryColors';
 import { Button, Input } from './index';
@@ -20,6 +20,9 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
 }) => {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [selectedColor, setSelectedColor] = useState<string>('');
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   const usedColors = categories.map(c => c.color);
   
@@ -30,21 +33,38 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
     }
   }, [selectedCategoryId, selectedColor, usedColors]);
 
+  // Закрытие выпадающего списка при клике вне его
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node) && 
+          buttonRef.current && !buttonRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const handleCreateCategory = () => {
     if (newCategoryName.trim() && selectedColor && onCreateCategory) {
       onCreateCategory(newCategoryName.trim(), selectedColor);
       setNewCategoryName('');
       setSelectedColor('');
+      setIsOpen(false);
     }
   };
 
+  const selectedCategory = categories.find(c => c.id === selectedCategoryId);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      {/* Основной селектор */}
+      {/* Кастомный селектор */}
       <div style={{ position: 'relative' }}>
-        <select
-          value={selectedCategoryId}
-          onChange={(e) => onCategoryChange(e.target.value as 'new' | string)}
+        <button
+          ref={buttonRef}
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
           style={{
             width: '100%',
             backgroundColor: 'var(--gitlab-bg-secondary)',
@@ -54,37 +74,153 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
             padding: '8px 12px',
             fontSize: '13px',
             cursor: 'pointer',
-            appearance: 'none',
-            backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 5'%3E%3Cpath fill='%23666' d='M2 0L0 2h4zm0 5L0 3h4z'/%3E%3C/svg%3E")`,
-            backgroundRepeat: 'no-repeat',
-            backgroundPosition: 'right 8px center',
-            backgroundSize: '12px',
-            paddingRight: '30px'
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            textAlign: 'left'
           }}
         >
-          <option value="">{placeholder}</option>
-          {categories.map((category) => (
-            <option key={category.id} value={category.id}>
-              {category.name}
-            </option>
-          ))}
-          <option value="new">➕ Новая категория...</option>
-        </select>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {selectedCategory ? (
+              <>
+                <div
+                  style={{
+                    width: '12px',
+                    height: '12px',
+                    borderRadius: '50%',
+                    backgroundColor: selectedCategory.color,
+                    border: '1px solid var(--gitlab-border-light)',
+                    flexShrink: 0
+                  }}
+                />
+                <span>{selectedCategory.name}</span>
+              </>
+            ) : (
+              <span style={{ color: 'var(--gitlab-text-secondary)' }}>{placeholder}</span>
+            )}
+          </div>
+          <span style={{ 
+            fontSize: '10px',
+            transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+            transition: 'transform 0.2s ease'
+          }}>
+            ▼
+          </span>
+        </button>
 
-        {/* Предпросмотр выбранной категории */}
-        {selectedCategoryId && selectedCategoryId !== 'new' && (
-          <div style={{
-            position: 'absolute',
-            right: '30px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            width: '16px',
-            height: '16px',
-            borderRadius: '50%',
-            backgroundColor: categories.find(c => c.id === selectedCategoryId)?.color || '#ccc',
-            border: '1px solid var(--gitlab-border-light)',
-            pointerEvents: 'none'
-          }} />
+        {/* Выпадающий список */}
+        {isOpen && (
+          <div
+            ref={dropdownRef}
+            style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              right: 0,
+              backgroundColor: 'var(--gitlab-bg-secondary)',
+              border: '1px solid var(--gitlab-border-light)',
+              borderRadius: '6px',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+              zIndex: 1000,
+              maxHeight: '200px',
+              overflowY: 'auto',
+              marginTop: '2px'
+            }}
+          >
+            {/* Опция "Без категории" */}
+            <button
+              type="button"
+              onClick={() => {
+                onCategoryChange('');
+                setIsOpen(false);
+              }}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                backgroundColor: selectedCategoryId === '' ? 'var(--gitlab-blue-light)' : 'transparent',
+                color: 'var(--gitlab-text-primary)',
+                border: 'none',
+                textAlign: 'left',
+                cursor: 'pointer',
+                fontSize: '13px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <div style={{ width: '12px', height: '12px' }} />
+              <span>Без категории</span>
+            </button>
+
+            {/* Категории */}
+            {categories.map((category) => (
+              <button
+                key={category.id}
+                type="button"
+                onClick={() => {
+                  onCategoryChange(category.id);
+                  setIsOpen(false);
+                }}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  backgroundColor: selectedCategoryId === category.id ? 'var(--gitlab-blue-light)' : 'transparent',
+                  color: 'var(--gitlab-text-primary)',
+                  border: 'none',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                <div
+                  style={{
+                    width: '12px',
+                    height: '12px',
+                    borderRadius: '50%',
+                    backgroundColor: category.color,
+                    border: '1px solid var(--gitlab-border-light)',
+                    flexShrink: 0
+                  }}
+                />
+                <span>{category.name}</span>
+              </button>
+            ))}
+
+            {/* Разделитель */}
+            <div style={{
+              height: '1px',
+              backgroundColor: 'var(--gitlab-border-light)',
+              margin: '4px 0'
+            }} />
+
+            {/* Опция создания новой категории */}
+            <button
+              type="button"
+              onClick={() => {
+                onCategoryChange('new');
+                setIsOpen(false);
+              }}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                backgroundColor: selectedCategoryId === 'new' ? 'var(--gitlab-blue-light)' : 'transparent',
+                color: 'var(--gitlab-text-primary)',
+                border: 'none',
+                textAlign: 'left',
+                cursor: 'pointer',
+                fontSize: '13px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <div style={{ width: '12px', height: '12px' }} />
+              <span>➕ Новая категория...</span>
+            </button>
+          </div>
         )}
       </div>
 

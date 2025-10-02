@@ -104,12 +104,12 @@ export const loadShowSidebar = (): boolean => {
   return getFromStorage<boolean>(STORAGE_KEYS.SHOW_SIDEBAR, true);
 };
 
-export const saveActivePanel = (panel: 'files' | 'comments' | 'export' | 'templates'): void => {
+export const saveActivePanel = (panel: 'files' | 'comments' | 'export' | 'templates' | 'import-export' | 'categories'): void => {
   setToStorage(STORAGE_KEYS.ACTIVE_PANEL, panel);
 };
 
-export const loadActivePanel = (): 'files' | 'comments' | 'export' | 'templates' => {
-  return getFromStorage<'files' | 'comments' | 'export' | 'templates'>(STORAGE_KEYS.ACTIVE_PANEL, 'files');
+export const loadActivePanel = (): 'files' | 'comments' | 'export' | 'templates' | 'import-export' | 'categories' => {
+  return getFromStorage<'files' | 'comments' | 'export' | 'templates' | 'import-export' | 'categories'>(STORAGE_KEYS.ACTIVE_PANEL, 'files');
 };
 
 export const saveVirtualizationEnabled = (enabled: boolean): void => {

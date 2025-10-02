@@ -11,6 +11,7 @@ interface MarkdownEditorProps {
   style?: React.CSSProperties;
   showTemplateButton?: boolean;
   onTemplateRequest?: () => void;
+  editorId?: string;
 }
 
 export const MarkdownEditor = ({ 
@@ -21,7 +22,8 @@ export const MarkdownEditor = ({
   autoFocus = false,
   style = {},
   showTemplateButton = false,
-  onTemplateRequest
+  onTemplateRequest,
+  editorId
 }: MarkdownEditorProps) => {
   const [isPreview, setIsPreview] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -733,6 +735,7 @@ export const MarkdownEditor = ({
           placeholder={placeholder}
           autoFocus={autoFocus}
           rows={rows}
+          data-editor-id={editorId}
           style={{
             borderRadius: '0 0 6px 6px',
             borderTop: 'none',

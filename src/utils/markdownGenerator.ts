@@ -253,42 +253,45 @@ export const generateMarkdownReport = (
 
     const fileCommentsForFile = fileComments.filter(c => c.isFileComment);
     const lineComments = fileComments.filter(c => !c.isFileComment);
+    const allComments = [...fileCommentsForFile, ...lineComments.sort((a, b) => a.startLine - b.startLine)];
 
-    fileCommentsForFile.forEach((comment) => {
-      const codeLink = generateCodeLink(
-        repository,
-        comment.filePath,
-        '',
-        1,
-        1
-      );
-      block += `**Комментарий к файлу:** [Перейти к файлу](${codeLink})\n\n`;
-      block += `${comment.comment}\n\n`;
-      block += `---\n\n`;
-    });
-
-    const sortedLineComments = lineComments.sort((a, b) => a.startLine - b.startLine);
-    sortedLineComments.forEach((comment) => {
-      const codeLink = generateCodeLink(
-        repository,
-        comment.filePath,
-        '',
-        comment.startLine,
-        comment.endLine
-      );
-      const codeSnippet = getCodeFromFile(comment.filePath, comment.startLine, comment.endLine);
-      const lineInfo = comment.startLine === comment.endLine 
-        ? `Строка ${comment.startLine}`
-        : `Строки ${comment.startLine}-${comment.endLine}`;
-      block += `**${lineInfo}:** [Перейти к коду](${codeLink})\n\n`;
-      if (codeSnippet.trim()) {
-        const language = getLanguageFromFilePath(comment.filePath);
-        block += `\`\`\`${language}\n`;
-        block += codeSnippet;
-        block += '\n```\n\n';
+    allComments.forEach((comment, index) => {
+      if (comment.isFileComment) {
+        const codeLink = generateCodeLink(
+          repository,
+          comment.filePath,
+          '',
+          1,
+          1
+        );
+        block += `**Комментарий к файлу:** [Перейти к файлу](${codeLink})\n\n`;
+        block += `${comment.comment}\n\n`;
+      } else {
+        const codeLink = generateCodeLink(
+          repository,
+          comment.filePath,
+          '',
+          comment.startLine,
+          comment.endLine
+        );
+        const codeSnippet = getCodeFromFile(comment.filePath, comment.startLine, comment.endLine);
+        const lineInfo = comment.startLine === comment.endLine 
+          ? `Строка ${comment.startLine}`
+          : `Строки ${comment.startLine}-${comment.endLine}`;
+        block += `**${lineInfo}:** [Перейти к коду](${codeLink})\n\n`;
+        if (codeSnippet.trim()) {
+          const language = getLanguageFromFilePath(comment.filePath);
+          block += `\`\`\`${language}\n`;
+          block += codeSnippet;
+          block += '\n```\n\n';
+        }
+        block += `${comment.comment}\n\n`;
       }
-      block += `${comment.comment}\n\n`;
-      block += `---\n\n`;
+      
+      // Добавляем разделитель только если это не последний комментарий
+      if (index < allComments.length - 1) {
+        block += `---\n\n`;
+      }
     });
     return block;
   };

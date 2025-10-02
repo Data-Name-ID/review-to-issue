@@ -7,6 +7,8 @@ import { MarkdownExport } from './components/MarkdownExport'
 import { FileTree } from './components/FileTree'
 import { RestoreNotification } from './components/RestoreNotification'
 import { TemplatesManager } from './components/TemplatesManager'
+import { ImportExportManager } from './components/ImportExportManager'
+import { CategoriesManager } from './components/CategoriesManager'
 import { Button, Section, SettingItem, InfoCard } from './components/ui'
 import { 
   saveCurrentFile, 
@@ -56,8 +58,8 @@ function App() {
   const [showSidebar, setShowSidebar] = useState(() => loadShowSidebar())
   const [isMobileView, setIsMobileView] = useState(false)
   const [showRepoSettings, setShowRepoSettings] = useState(false)
-  const [activePanel, setActivePanel] = useState<'files' | 'comments' | 'export' | 'templates'>(() => {
-    const loaded = loadActivePanel() as 'files' | 'comments' | 'export' | 'templates' | 'readme';
+  const [activePanel, setActivePanel] = useState<'files' | 'comments' | 'export' | 'templates' | 'import-export' | 'categories'>(() => {
+    const loaded = loadActivePanel() as 'files' | 'comments' | 'export' | 'templates' | 'readme' | 'import-export' | 'categories';
     // Если загружена старая вкладка 'readme', используем 'files'
     return loaded === 'readme' ? 'files' : loaded;
   })
@@ -86,11 +88,17 @@ function App() {
     dismissRestore,
     startNewRepository,
     addCategory,
+    updateCategory,
+    removeCategory,
     addTemplate,
     updateTemplate,
     removeTemplate,
     useTemplate,
-    duplicateTemplate
+    duplicateTemplate,
+    importCategories,
+    importTemplates,
+    importComments,
+    importRepository
   } = useProjectState()
 
   // Проверка размера экрана
@@ -401,6 +409,18 @@ function App() {
             >
               Шаблоны {templates.length > 0 && `(${templates.length})`}
             </button>
+            <button
+              onClick={() => setActivePanel('categories')}
+              className={`gitlab-panel-tab ${activePanel === 'categories' ? 'active' : ''}`}
+            >
+              🏷️ Категории {categories.length > 0 && `(${categories.length})`}
+            </button>
+            <button
+              onClick={() => setActivePanel('import-export')}
+              className={`gitlab-panel-tab ${activePanel === 'import-export' ? 'active' : ''}`}
+            >
+              📁 Импорт/Экспорт
+            </button>
            </div>
         </div>
 
@@ -449,6 +469,32 @@ function App() {
                 onUpdateTemplate={updateTemplate}
                 onRemoveTemplate={removeTemplate}
                 onDuplicateTemplate={duplicateTemplate}
+              />
+            </div>
+          )}
+
+          {activePanel === 'categories' && (
+            <div style={{ padding: '16px' }}>
+              <CategoriesManager
+                categories={categories}
+                onAddCategory={addCategory}
+                onUpdateCategory={updateCategory}
+                onRemoveCategory={removeCategory}
+              />
+            </div>
+          )}
+
+          {activePanel === 'import-export' && (
+            <div style={{ padding: '16px' }}>
+              <ImportExportManager
+                categories={categories}
+                templates={templates}
+                comments={comments}
+                repository={repository}
+                onImportCategories={importCategories}
+                onImportTemplates={importTemplates}
+                onImportComments={importComments}
+                onImportRepository={importRepository}
               />
             </div>
           )}
