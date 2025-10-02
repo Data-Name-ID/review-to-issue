@@ -600,6 +600,8 @@ h1, h2, h3, h4, h5, h6 {
   padding: 12px;
   color: var(--gitlab-text-primary);
   line-height: 1.5;
+  position: relative;
+  z-index: 1;
 }
 
 /* Точные отступы между элементами формы */

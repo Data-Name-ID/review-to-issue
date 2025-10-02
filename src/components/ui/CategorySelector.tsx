@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { CommentCategory } from '../../types';
 import { CATEGORY_COLOR_POOL, getNextAvailableColor, getContrastTextColor } from '../../utils/categoryColors';
 import { Button, Input } from './index';
@@ -21,6 +22,7 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
   const [newCategoryName, setNewCategoryName] = useState('');
   const [selectedColor, setSelectedColor] = useState<string>('');
   const [isOpen, setIsOpen] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
   const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -32,6 +34,39 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
       setSelectedColor(getNextAvailableColor(usedColors));
     }
   }, [selectedCategoryId, selectedColor, usedColors]);
+
+  // Сбрасываем выбранный цвет, если он стал недоступным
+  React.useEffect(() => {
+    if (selectedColor && usedColors.includes(selectedColor)) {
+      setSelectedColor('');
+    }
+  }, [selectedColor, usedColors]);
+
+  // Обновляем позицию выпадающего списка при открытии
+  const updateDropdownPosition = () => {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + window.scrollY,
+        left: rect.left + window.scrollX,
+        width: rect.width
+      });
+    }
+  };
+
+  // Обновляем позицию при открытии и при изменении размера окна
+  React.useEffect(() => {
+    if (isOpen) {
+      updateDropdownPosition();
+      const handleResize = () => updateDropdownPosition();
+      window.addEventListener('resize', handleResize);
+      window.addEventListener('scroll', handleResize);
+      return () => {
+        window.removeEventListener('resize', handleResize);
+        window.removeEventListener('scroll', handleResize);
+      };
+    }
+  }, [isOpen]);
 
   // Закрытие выпадающего списка при клике вне его
   useEffect(() => {
@@ -64,7 +99,12 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
         <button
           ref={buttonRef}
           type="button"
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={() => {
+            if (!isOpen) {
+              updateDropdownPosition();
+            }
+            setIsOpen(!isOpen);
+          }}
           style={{
             width: '100%',
             backgroundColor: 'var(--gitlab-bg-secondary)',
@@ -77,51 +117,45 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            textAlign: 'left'
+            transition: 'border-color 0.2s ease'
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span>
             {selectedCategory ? (
-              <>
-                <div
-                  style={{
-                    width: '12px',
-                    height: '12px',
-                    borderRadius: '50%',
-                    backgroundColor: selectedCategory.color,
-                    border: '1px solid var(--gitlab-border-light)',
-                    flexShrink: 0
-                  }}
-                />
-                <span>{selectedCategory.name}</span>
-              </>
-            ) : (
-              <span style={{ color: 'var(--gitlab-text-secondary)' }}>{placeholder}</span>
-            )}
-          </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{
+                  width: '12px',
+                  height: '12px',
+                  borderRadius: '50%',
+                  backgroundColor: selectedCategory.color
+                }} />
+                {selectedCategory.name}
+              </div>
+            ) : selectedCategoryId === 'new' ? 'Создать новую категорию...' : placeholder}
+          </span>
           <span style={{ 
             fontSize: '10px',
-            transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-            transition: 'transform 0.2s ease'
+            transition: 'transform 0.2s ease',
+            transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)'
           }}>
             ▼
           </span>
         </button>
 
-        {/* Выпадающий список */}
-        {isOpen && (
+        {/* Выпадающий список через портал */}
+        {isOpen && createPortal(
           <div
             ref={dropdownRef}
             style={{
               position: 'absolute',
-              top: '100%',
-              left: 0,
-              right: 0,
+              top: dropdownPosition.top,
+              left: dropdownPosition.left,
+              width: dropdownPosition.width,
               backgroundColor: 'var(--gitlab-bg-secondary)',
               border: '1px solid var(--gitlab-border-light)',
               borderRadius: '6px',
-              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-              zIndex: 1000,
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25)',
+              zIndex: 99999,
               maxHeight: '200px',
               overflowY: 'auto',
               marginTop: '2px'
@@ -172,60 +206,54 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
                   fontSize: '13px',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '8px'
+                  gap: '8px',
+                  borderTop: '1px solid var(--gitlab-border-light)'
                 }}
               >
-                <div
-                  style={{
-                    width: '12px',
-                    height: '12px',
-                    borderRadius: '50%',
-                    backgroundColor: category.color,
-                    border: '1px solid var(--gitlab-border-light)',
-                    flexShrink: 0
-                  }}
-                />
+                <div style={{
+                  width: '12px',
+                  height: '12px',
+                  borderRadius: '50%',
+                  backgroundColor: category.color
+                }} />
                 <span>{category.name}</span>
               </button>
             ))}
 
-            {/* Разделитель */}
-            <div style={{
-              height: '1px',
-              backgroundColor: 'var(--gitlab-border-light)',
-              margin: '4px 0'
-            }} />
-
             {/* Опция создания новой категории */}
-            <button
-              type="button"
-              onClick={() => {
-                onCategoryChange('new');
-                setIsOpen(false);
-              }}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                backgroundColor: selectedCategoryId === 'new' ? 'var(--gitlab-blue-light)' : 'transparent',
-                color: 'var(--gitlab-text-primary)',
-                border: 'none',
-                textAlign: 'left',
-                cursor: 'pointer',
-                fontSize: '13px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              <div style={{ width: '12px', height: '12px' }} />
-              <span>➕ Новая категория...</span>
-            </button>
-          </div>
+            {onCreateCategory && (
+              <button
+                type="button"
+                onClick={() => {
+                  onCategoryChange('new');
+                  setIsOpen(false);
+                }}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  backgroundColor: selectedCategoryId === 'new' ? 'var(--gitlab-blue-light)' : 'transparent',
+                  color: 'var(--gitlab-text-primary)',
+                  border: 'none',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  borderTop: '1px solid var(--gitlab-border-light)'
+                }}
+              >
+                <div style={{ width: '12px', height: '12px' }} />
+                <span>➕ Создать новую категорию</span>
+              </button>
+            )}
+          </div>,
+          document.body
         )}
       </div>
 
       {/* Форма создания новой категории */}
-      {selectedCategoryId === 'new' && (
+      {selectedCategoryId === 'new' && onCreateCategory && (
         <div style={{
           padding: '12px',
           backgroundColor: 'var(--gitlab-bg-tertiary)',
@@ -235,16 +263,6 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
           flexDirection: 'column',
           gap: '8px'
         }}>
-          <div style={{
-            fontSize: '12px',
-            color: 'var(--gitlab-text-secondary)',
-            fontWeight: 600,
-            marginBottom: '4px'
-          }}>
-            Создание новой категории
-          </div>
-
-          {/* Поле названия */}
           <Input
             placeholder="Название категории"
             value={newCategoryName}
@@ -253,73 +271,54 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
           />
 
           {/* Выбор цвета */}
-          <div>
-            <div style={{
-              fontSize: '11px',
-              color: 'var(--gitlab-text-secondary)',
-              marginBottom: '6px'
-            }}>
-              Цвет категории:
-            </div>
-            <div style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '6px'
-            }}>
-              {CATEGORY_COLOR_POOL.slice(0, 12).map((color) => { // Показываем первые 12 цветов
-                const isUsed = usedColors.includes(color);
-                const isSelected = selectedColor === color;
-                
-                return (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => !isUsed && setSelectedColor(color)}
-                    disabled={isUsed}
-                    style={{
-                      width: '28px',
-                      height: '28px',
-                      borderRadius: '6px',
-                      backgroundColor: color,
-                      border: isSelected ? '2px solid var(--gitlab-blue)' : '1px solid var(--gitlab-border-light)',
-                      cursor: isUsed ? 'not-allowed' : 'pointer',
-                      opacity: isUsed ? 0.3 : 1,
-                      position: 'relative',
-                      transition: 'all 0.2s ease'
-                    }}
-                    title={isUsed ? 'Цвет уже используется' : `Выбрать цвет ${color}`}
-                  >
-                    {isSelected && (
-                      <span style={{
-                        position: 'absolute',
-                        top: '50%',
-                        left: '50%',
-                        transform: 'translate(-50%, -50%)',
-                        color: getContrastTextColor(color),
-                        fontSize: '12px'
-                      }}>
-                        ✓
-                      </span>
-                    )}
-                    {isUsed && (
-                      <span style={{
-                        position: 'absolute',
-                        top: '50%',
-                        left: '50%',
-                        transform: 'translate(-50%, -50%)',
-                        color: getContrastTextColor(color),
-                        fontSize: '10px'
-                      }}>
-                        ✕
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            {CATEGORY_COLOR_POOL.map((color) => {
+              const isUsed = usedColors.includes(color);
+              const isSelected = selectedColor === color;
+              
+              return (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => !isUsed && setSelectedColor(color)}
+                  disabled={isUsed}
+                  style={{
+                    width: '24px',
+                    height: '24px',
+                    borderRadius: '50%',
+                    backgroundColor: color,
+                    border: isSelected ? '2px solid var(--gitlab-text-primary)' : '1px solid var(--gitlab-border-light)',
+                    cursor: isUsed ? 'not-allowed' : 'pointer',
+                    transition: 'border-color 0.2s ease',
+                    padding: 0,
+                    minWidth: '24px',
+                    minHeight: '24px',
+                    flexShrink: 0,
+                    position: 'relative',
+                    opacity: isUsed ? 0.6 : 1
+                  }}
+                  title={isUsed ? `${color} (уже используется)` : color}
+                >
+                  {isUsed && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      fontSize: '10px',
+                      color: getContrastTextColor(color),
+                      textShadow: '0 0 2px rgba(0,0,0,0.8)',
+                      pointerEvents: 'none'
+                    }}>
+                      🔒
+                    </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Предпросмотр новой категории */}
+          {/* Предварительный просмотр */}
           {newCategoryName.trim() && selectedColor && (
             <div style={{
               display: 'flex',
@@ -327,13 +326,11 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
               gap: '8px',
               padding: '6px 8px',
               backgroundColor: 'var(--gitlab-bg-secondary)',
-              border: '1px solid var(--gitlab-border-light)',
               borderRadius: '4px',
-              fontSize: '11px'
+              fontSize: '12px'
             }}>
-              <span style={{ color: 'var(--gitlab-text-secondary)' }}>Предпросмотр:</span>
+              <span>Предварительный просмотр:</span>
               <span style={{
-                display: 'inline-block',
                 padding: '2px 6px',
                 borderRadius: '10px',
                 backgroundColor: selectedColor,
@@ -349,9 +346,8 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
           {/* Действия */}
           <div style={{
             display: 'flex',
-            gap: '6px',
-            justifyContent: 'flex-end',
-            marginTop: '4px'
+            gap: '8px',
+            justifyContent: 'flex-end'
           }}>
             <Button
               variant="secondary"
