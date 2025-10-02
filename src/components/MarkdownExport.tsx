@@ -161,7 +161,7 @@ export const MarkdownExport = ({ comments, repository, allFiles, categories }: M
         const categoryIndex = categoryPreviews.findIndex(section => section.key === categoryKey);
         // Убираем "Категория:" из названия, если оно есть
         const cleanTitle = content.replace(/^Категория:\s*/, '');
-        textToCopy = `[${weekNumber}.${categoryIndex + 1}] ${cleanTitle}`;
+        textToCopy = `[${weekNumber}.${categoryIndex + 2}] ${cleanTitle}`;
       }
       
       await navigator.clipboard.writeText(textToCopy);
@@ -419,7 +419,7 @@ export const MarkdownExport = ({ comments, repository, allFiles, categories }: M
                 >
                   <span style={styles.sectionTitle}>
                     {section.category && <CategoryDot color={section.category.color} />}
-                    [{weekNumber}.{categoryPreviews.findIndex(s => s.key === section.key) + 1}] {section.title.replace(/^Категория:\s*/, '')} ({section.count})
+                    [{weekNumber}.{categoryPreviews.findIndex(s => s.key === section.key) + 2}] {section.title.replace(/^Категория:\s*/, '')} ({section.count})
                   </span>
                   <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                     <Button 
