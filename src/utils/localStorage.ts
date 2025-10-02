@@ -51,8 +51,8 @@ export const removeFromStorage = (key: string): void => {
 // Очистка всех данных приложения
 export const clearAppStorage = (): void => {
   Object.values(STORAGE_KEYS).forEach(key => {
-    // Не удаляем категории — они должны сохраняться между репозиториями
-    if (key !== STORAGE_KEYS.CATEGORIES) {
+    // Не удаляем категории и шаблоны — они должны сохраняться между репозиториями
+    if (key !== STORAGE_KEYS.CATEGORIES && key !== STORAGE_KEYS.TEMPLATES) {
       removeFromStorage(key);
     }
   });
