@@ -11,7 +11,13 @@ export const generateGitLabCodeLink = (
   const encodedFilePath = encodeURIComponent(filePath);
   const encodedText = encodeURIComponent(selectedText);
   
-  let link = `${repository.baseUrl}/-/blob/${repository.defaultBranch}/${encodedFilePath}?ref_type=heads`;
+  let link = `${repository.baseUrl}/-/blob/${repository.defaultBranch}/${encodedFilePath}`;
+  
+  // Добавляем ref_type=heads только если есть ссылка на строки
+  const hasLineReference = startLine || selectedText.trim();
+  if (hasLineReference) {
+    link += '?ref_type=heads';
+  }
   
   if (selectedText.trim()) {
     link += `#:~:text=${encodedText}`;

@@ -227,7 +227,8 @@ export const generateMarkdownReport = (
   comments: CodeComment[],
   repository: Repository,
   allFiles?: Array<{ path: string; content: string }>,
-  categories?: CommentCategory[]
+  categories?: CommentCategory[],
+  includeFileHeaders: boolean = true
 ): string => {
   if (!repository || comments.length === 0) {
     return '';
@@ -249,7 +250,9 @@ export const generateMarkdownReport = (
 
   const renderCommentsForFile = (filePath: string, fileComments: CodeComment[]) => {
     let block = '';
-    block += `### ${filePath}\n\n`;
+    if (includeFileHeaders) {
+      block += `### ${filePath}\n\n`;
+    }
 
     const fileCommentsForFile = fileComments.filter(c => c.isFileComment);
     const lineComments = fileComments.filter(c => !c.isFileComment);
@@ -261,8 +264,8 @@ export const generateMarkdownReport = (
           repository,
           comment.filePath,
           '',
-          1,
-          1
+          undefined,
+          undefined
         );
         block += `**Комментарий к файлу:** [Перейти к файлу](${codeLink})\n\n`;
         block += `${comment.comment}\n\n`;
